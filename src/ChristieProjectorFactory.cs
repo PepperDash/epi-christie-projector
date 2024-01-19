@@ -27,10 +27,10 @@ namespace ChristieProjectorPlugin
 
 	        switch (dc.Type.ToLower())
 	        {
-				case "Christie4k7hsprojector":
+				case "christie4k7hsprojector":
 					return new Christie4K7HsController(dc.Key, dc.Name, config, comms);
-				//case "Christie4k25rgbcpprojector":
-				//	return new Christie4k25rgbController(dc.Key, dc.Name, config, comms);
+				case "christie4k25rgbprojector":
+					return new Christie4K25RgbController(dc.Key, dc.Name, config, comms);
 				default:
                     return new Christie4K7HsController(dc.Key, dc.Name, config, comms); ;
 	        }
