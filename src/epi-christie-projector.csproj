@@ -96,6 +96,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Christie4K7HsController.cs" />
+    <Compile Include="Christie4K25RgbController.cs" />
     <Compile Include="DebugExtension.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ChristieProjectorBridgeJoinMap.cs" />
