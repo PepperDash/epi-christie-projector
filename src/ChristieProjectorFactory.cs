@@ -4,13 +4,13 @@ using PepperDash.Essentials.Core.Config;
 
 namespace ChristieProjectorPlugin
 {
-    public class ChristieProjectorFactory:EssentialsPluginDeviceFactory<Christie4K7HsController>
+    public class ChristieProjectorFactory:EssentialsPluginDeviceFactory<EssentialsDevice>
     {
         public ChristieProjectorFactory()
         {
             TypeNames = new List<string> {"ChristieProjector", "Christie4k7hsProjector", "Christie4k25rgbProjector" };
 
-            MinimumEssentialsFrameworkVersion = "1.10.3";
+            MinimumEssentialsFrameworkVersion = "2.5.1";
         }
 
         public override EssentialsDevice BuildDevice(DeviceConfig dc)
