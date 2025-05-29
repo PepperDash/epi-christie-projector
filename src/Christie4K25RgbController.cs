@@ -12,6 +12,7 @@ using PepperDash.Essentials.Core.Bridges;
 using PepperDash.Essentials.Core.Queues;
 using PepperDash.Essentials.Core.Routing;
 using PepperDash.Essentials.Devices.Displays;
+using PepperDash.Essentials.Devices.Common.Displays;
 using System.Text.RegularExpressions;
 
 namespace ChristieProjectorPlugin

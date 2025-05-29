@@ -4,7 +4,7 @@ using PepperDash.Essentials.Core.Config;
 
 namespace ChristieProjectorPlugin
 {
-    public class ChristieProjectorFactory:EssentialsPluginDeviceFactory<EssentialsDevice>
+    public class ChristieProjectorFactory:EssentialsPluginDeviceFactory<Christie4K7HsController>
     {
         public ChristieProjectorFactory()
         {
@@ -25,7 +25,7 @@ namespace ChristieProjectorPlugin
 		        return null;
 	        }
 
-	        switch (dc.Type.ToLower())
+             switch (dc.Type.ToLower())
 	        {
 				case "christie4k7hsprojector":
 					return new Christie4K7HsController(dc.Key, dc.Name, config, comms);
