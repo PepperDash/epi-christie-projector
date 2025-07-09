@@ -10,6 +10,7 @@ using PepperDash.Core;
 using PepperDash.Core.Logging;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Bridges;
+using PepperDash.Essentials.Core.DeviceTypeInterfaces;
 using PepperDash.Essentials.Core.Queues;
 using PepperDash.Essentials.Devices.Common.Displays;
 using PepperDash.Essentials.Devices.Displays;
@@ -20,14 +21,16 @@ namespace ChristieProjectorPlugin
 	/// Controller for Christie 4K7-HS projector providing two-way communication,
 	/// input routing, power management, and video mute functionality
 	/// </summary>
-	public class Christie4K7HsController : TwoWayDisplayBase, ICommunicationMonitor,
-		IInputHdmi1, IInputHdmi2, IInputHdmi4, IInputDisplayPort1, IBridgeAdvanced
+	public class Christie4K7HsController : TwoWayDisplayBase, ICommunicationMonitor, IBridgeAdvanced,
+		IHasInputs<string>
 	{
 
 		private bool _isSerialComm;
 		private bool HasLamps { get; set; }
 		private bool HasScreen { get; set; }
 		private bool HasLift { get; set; }
+
+		public ISelectableItems<string> Inputs { get; private set; }
 
 		/// <summary>
 		/// Initializes a new instance of the Christie4K7HsController class
@@ -675,15 +678,13 @@ namespace ChristieProjectorPlugin
 				new RoutingInputPort(RoutingPortNames.DisplayPortIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort1), this), 6);
 
-			// RoutingPortNames does not contain and Slot1, using HdmiIn4
 			AddRoutingInputPort(
-				new RoutingInputPort(RoutingPortNames.HdmiIn4, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-					eRoutingPortConnectionType.Streaming, new Action(InputHdmi4), this), 13);
+				new RoutingInputPort("slot1", eRoutingSignalType.Audio | eRoutingSignalType.Video,
+					eRoutingPortConnectionType.Streaming, new Action(InputSlot1), this), 13);
 
-			// RoutingPortNames does not contain and Slot2, using HdmiIn5
 			AddRoutingInputPort(
-				new RoutingInputPort(RoutingPortNames.HdmiIn5, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-					eRoutingPortConnectionType.Streaming, new Action(InputHdmi5), this), 14);
+				new RoutingInputPort("slot2", eRoutingSignalType.Audio | eRoutingSignalType.Video,
+					eRoutingPortConnectionType.Streaming, new Action(InputSlot2), this), 14);
 
 			// initialize feedbacks after adding input ports
 			_inputFeedback = new List<bool>();
@@ -702,6 +703,11 @@ namespace ChristieProjectorPlugin
 			{
 				return CurrentInputNumber;
 			});
+
+			Inputs = new ChristieProjectorInputs()
+			{
+				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, p.Key, p.Selector as Action) as ISelectableItem)
+			};
 		}
 
 		/// <summary>
@@ -733,7 +739,7 @@ namespace ChristieProjectorPlugin
 		/// <summary>
 		/// Selects HDMI input 4 (Slot 1) on the projector using async task execution
 		/// </summary>
-		public void InputHdmi4()
+		public void InputSlot1()
 		{
 			Task.Run(() =>
 			{
@@ -747,7 +753,7 @@ namespace ChristieProjectorPlugin
 		/// <summary>
 		/// Selects HDMI input 5 (Slot 2) on the projector using async task execution
 		/// </summary>
-		public void InputHdmi5()
+		public void InputSlot2()
 		{
 			Task.Run(() =>
 			{
@@ -814,10 +820,25 @@ namespace ChristieProjectorPlugin
 		{
 			var newInput = InputPorts.FirstOrDefault(i => i.FeedbackMatchObject.Equals(input));
 			if (newInput == null) return;
+
 			if (newInput == _currentInputPort)
 			{
 				this.LogDebug("UpdateInputFb: _currentInputPort-'{currentInputPort}' == newInput-'{newInputPort}'", _currentInputPort.Key, newInput.Key);
 				return;
+			}
+
+			if (Inputs.Items.TryGetValue(newInput.Key, out var inputItem))
+			{
+				foreach (var item in Inputs.Items.Values)
+				{
+					item.IsSelected = item.Key == inputItem.Key;
+				}
+
+				Inputs.CurrentItem = inputItem.Key;
+			}
+			else
+			{
+				this.LogWarning("UpdateInputFb: Input '{inputKey}' not found in Inputs.Items", newInput.Key);
 			}
 
 			_currentInputPort = newInput;
@@ -837,10 +858,10 @@ namespace ChristieProjectorPlugin
 				case RoutingPortNames.DisplayPortIn1:
 					CurrentInputNumber = 4;
 					break;
-				case RoutingPortNames.HdmiIn4:
+				case "slot1":
 					CurrentInputNumber = 5;
 					break;
-				case RoutingPortNames.HdmiIn5:
+				case "slot2":
 					CurrentInputNumber = 6;
 					break;
 			}

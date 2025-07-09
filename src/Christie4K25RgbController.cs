@@ -9,6 +9,7 @@ using PepperDash.Core;
 using PepperDash.Core.Logging;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Bridges;
+using PepperDash.Essentials.Core.DeviceTypeInterfaces;
 using PepperDash.Essentials.Core.Queues;
 using PepperDash.Essentials.Devices.Common.Displays;
 using PepperDash.Essentials.Devices.Displays;
@@ -20,13 +21,15 @@ namespace ChristieProjectorPlugin
 	/// input routing, power management, and video mute functionality
 	/// </summary>
 	public class Christie4K25RgbController : TwoWayDisplayBase, ICommunicationMonitor,
-		IInputHdmi1, IInputHdmi2, IInputDisplayPort1, IBridgeAdvanced
+		IBridgeAdvanced, IHasInputs<string>
 	{
 
 		private bool _isSerialComm;
 		private bool HasLamps { get; set; }
 		private bool HasScreen { get; set; }
 		private bool HasLift { get; set; }
+
+		public ISelectableItems<string> Inputs { get; private set; }
 
 		/// <summary>
 		/// Initializes a new instance of the Christie4K25RgbController class
@@ -720,14 +723,13 @@ namespace ChristieProjectorPlugin
 							eRoutingPortConnectionType.Sdi, new Action(InputSdi4), this), 9);
 
 
-			// RoutingPortNames does not contain Link 1, using HdmiIn5
 			AddRoutingInputPort(
-				new RoutingInputPort(RoutingPortNames.HdmiIn5, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+				new RoutingInputPort("link1", eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink1), this), 10);
 
-			// RoutingPortNames does not contain Link 2, using HdmiIn6
+
 			AddRoutingInputPort(
-				new RoutingInputPort(RoutingPortNames.HdmiIn6, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+				new RoutingInputPort("link2", eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink2), this), 11);
 
 			// initialize feedbacks after adding input ports
@@ -747,6 +749,11 @@ namespace ChristieProjectorPlugin
 			{
 				return CurrentInputNumber;
 			});
+
+			Inputs = new ChristieProjectorInputs()
+			{
+				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, p.Key, p.Selector as Action) as ISelectableItem)
+			};
 		}
 
 		/// <summary>
@@ -897,17 +904,26 @@ namespace ChristieProjectorPlugin
 			if (newInput == null) return;
 			if (newInput == _currentInputPort)
 			{
-				Debug.Console(DebugExtension.Notice, this, "UpdateInputFb: _currentInputPort-'{0}' == newInput-'{1}'", _currentInputPort.Key, newInput.Key);
+				this.LogDebug("UpdateInputFb: _currentInputPort-'{currentInputPort}' == newInput-'{newInputPort}'", _currentInputPort.Key, newInput.Key);
 				return;
 			}
 
-			Debug.Console(DebugExtension.Notice, this, "UpdateInputFb: newInput key-'{0}', connectionType-'{1}', feedbackMatchObject-'{2}'",
-				newInput.Key, newInput.ConnectionType, newInput.FeedbackMatchObject);
+			if (Inputs.Items.TryGetValue(newInput.Key, out var inputItem))
+			{
+				foreach (var item in Inputs.Items.Values)
+				{
+					item.IsSelected = item.Key == inputItem.Key;
+				}
+
+				Inputs.CurrentItem = inputItem.Key;
+			}
+			else
+			{
+				this.LogWarning("UpdateInputFb: Input '{inputKey}' not found in Inputs.Items", newInput.Key);
+			}
 
 			_currentInputPort = newInput;
 			CurrentInputFeedback.FireUpdate();
-
-			Debug.Console(DebugExtension.Notice, this, "UpdateInputFb: _currentInputPort.key-'{0}'", _currentInputPort.Key);
 
 			switch (_currentInputPort.Key)
 			{
