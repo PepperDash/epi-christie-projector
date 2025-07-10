@@ -1,48 +1,52 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Crestron.SimplSharp;
-using Crestron.SimplSharp.Ssh;
 using Crestron.SimplSharpPro.CrestronThread;
 using Crestron.SimplSharpPro.DeviceSupport;
 using PepperDash.Core;
+using PepperDash.Core.Logging;
 using PepperDash.Essentials.Core;
 using PepperDash.Essentials.Core.Bridges;
+using PepperDash.Essentials.Core.DeviceTypeInterfaces;
 using PepperDash.Essentials.Core.Queues;
-using PepperDash.Essentials.Core.Routing;
+using PepperDash.Essentials.Devices.Common.Displays;
 using PepperDash.Essentials.Devices.Displays;
-using System.Text.RegularExpressions;
 
 namespace ChristieProjectorPlugin
 {
+	/// <summary>
+	/// Controller for Christie 4K25 RGB projector providing two-way communication,
+	/// input routing, power management, and video mute functionality
+	/// </summary>
 	public class Christie4K25RgbController : TwoWayDisplayBase, ICommunicationMonitor,
-		IInputHdmi1, IInputHdmi2, IInputDisplayPort1,IBridgeAdvanced
+		IBridgeAdvanced, IHasInputs<string>
 	{
-		
+
 		private bool _isSerialComm;
 		private bool HasLamps { get; set; }
 		private bool HasScreen { get; set; }
 		private bool HasLift { get; set; }
 
+		public ISelectableItems<string> Inputs { get; private set; }
+
 		/// <summary>
-		/// Constructor
+		/// Initializes a new instance of the Christie4K25RgbController class
 		/// </summary>
-		/// <param name="key"></param>
-		/// <param name="name"></param>
-		/// <param name="config"></param>
-		/// <param name="comms"></param>
+		/// <param name="key">Unique identifier for this device instance</param>
+		/// <param name="name">Human-readable name for this device</param>
+		/// <param name="config">Configuration properties specific to Christie projectors</param>
+		/// <param name="comms">Communication interface for device connectivity</param>
 		public Christie4K25RgbController(string key, string name, ChristieProjectorPropertiesConfig config, IBasicCommunication comms)
 			: base(key, name)
 		{
 			var props = config;
 			if (props == null)
 			{
-				Debug.Console(0, this, Debug.ErrorLogLevel.Error, "{0} configuration must be included", key);
+				this.LogError("configuration must be included");
 				return;
 			}
-
-			DebugExtension.ResetDebugLevels();
 
 			LampHoursFeedback = new IntFeedback(() => LampHours);
 
@@ -51,16 +55,15 @@ namespace ChristieProjectorPlugin
 			_receiveQueue = new GenericQueue(key + "-queue");
 
 			CommunicationGather = new CommunicationGather(Communication, GatherDelimiter);
-            CommunicationGather.LineReceived += OnCommunicationGatherLineReceived;
+			CommunicationGather.LineReceived += OnCommunicationGatherLineReceived;
 
 
-			var socket = Communication as ISocketStatus;
-			_isSerialComm = (socket == null);
+			_isSerialComm = !(Communication is ISocketStatus socket);
 
 			var pollIntervalMs = props.PollIntervalMs > 45000 ? props.PollIntervalMs : 45000;
 			CommunicationMonitor = new GenericCommunicationMonitor(this, Communication, pollIntervalMs, 180000, 300000,
 				StatusGet);
-            
+
 			CommunicationMonitor.StatusChange += OnCommunicationMonitorStatusChange;
 
 			DeviceManager.AddDevice(CommunicationMonitor);
@@ -79,7 +82,7 @@ namespace ChristieProjectorPlugin
 
 
 		/// <summary>
-		/// Initialize (override from PepperDash Essentials)
+		/// Initializes the device by establishing communication connection and starting the communication monitor
 		/// </summary>
 		public override void Initialize()
 		{
@@ -93,21 +96,18 @@ namespace ChristieProjectorPlugin
 		#region IBridgeAdvanced Members
 
 		/// <summary>
-		/// LinkToApi
+		/// Links the device to the EISC API bridge, configuring all join mappings for power, input, and video mute controls
 		/// </summary>
-		/// <param name="trilist"></param>
-		/// <param name="joinStart"></param>
-		/// <param name="joinMapKey"></param>
-		/// <param name="bridge"></param>
+		/// <param name="trilist">The BasicTriList device (EISC) to link to</param>
+		/// <param name="joinStart">The starting join number for this device's join map</param>
+		/// <param name="joinMapKey">The key for custom join map configuration</param>
+		/// <param name="bridge">The EISC API advanced bridge instance</param>
 		public void LinkToApi(BasicTriList trilist, uint joinStart, string joinMapKey, EiscApiAdvanced bridge)
 		{
 			var joinMap = new ChristieProjectorBridgeJoinMap(joinStart);
 
 			// This adds the join map to the collection on the bridge
-			if (bridge != null)
-			{
-				bridge.AddJoinMap(Key, joinMap);
-			}
+			bridge?.AddJoinMap(Key, joinMap);
 
 			var customJoins = JoinMapHelper.TryGetJoinMapAdvancedForDevice(joinMapKey);
 			if (customJoins != null)
@@ -115,8 +115,7 @@ namespace ChristieProjectorPlugin
 				joinMap.SetCustomJoinData(customJoins);
 			}
 
-			Debug.Console(0, this, "Linking to Trilist '{0}'", trilist.ID.ToString("X"));
-			Debug.Console(0, this, "Linking to Bridge Type {0}", GetType().Name);
+			this.LogInformation("Linking to Trilist '{ipId:X}'", trilist.ID.ToString("X"));
 
 			// links to bridge
 			// device name
@@ -130,10 +129,7 @@ namespace ChristieProjectorPlugin
 			trilist.SetBool(joinMap.HasScreen.JoinNumber, HasScreen);
 			trilist.SetBool(joinMap.HasLift.JoinNumber, HasLift);
 
-			if (CommunicationMonitor != null)
-			{
-				CommunicationMonitor.IsOnlineFeedback.LinkInputSig(trilist.BooleanInput[joinMap.IsOnline.JoinNumber]);
-			}
+			CommunicationMonitor?.IsOnlineFeedback.LinkInputSig(trilist.BooleanInput[joinMap.IsOnline.JoinNumber]);
 
 			// power off & is cooling
 			trilist.SetSigTrueAction(joinMap.PowerOff.JoinNumber, PowerOff);
@@ -155,7 +151,7 @@ namespace ChristieProjectorPlugin
 
 				trilist.SetSigTrueAction((ushort)(joinMap.InputSelectOffset.JoinNumber + inputIndex), () =>
 				{
-					Debug.Console(DebugExtension.Verbose, this, "InputSelect Digital-'{0}'", inputIndex + 1);
+					this.LogVerbose("InputSelect Digital-{inputIndex}", inputIndex + 1);
 					SetInput = inputIndex + 1;
 				});
 
@@ -165,18 +161,17 @@ namespace ChristieProjectorPlugin
 			}
 
 			// input (analog select)
-			trilist.SetUShortSigAction(joinMap.InputSelect.JoinNumber, analogValue =>
+			trilist.SetUShortSigAction(joinMap.InputSelect.JoinNumber, inputNumber =>
 			{
-				Debug.Console(DebugExtension.Notice, this, "InputSelect Analog-'{0}'", analogValue);
-				SetInput = analogValue;
+				this.LogDebug("InputSelect Analog-{inputValue}", inputNumber);
+				SetInput = inputNumber;
 			});
 
 			// input (analog feedback)
-			if (CurrentInputNumberFeedback != null)
-				CurrentInputNumberFeedback.LinkInputSig(trilist.UShortInput[joinMap.InputSelect.JoinNumber]);
+			CurrentInputNumberFeedback?.LinkInputSig(trilist.UShortInput[joinMap.InputSelect.JoinNumber]);
 
 			if (CurrentInputFeedback != null)
-				CurrentInputFeedback.OutputChange += (sender, args) => Debug.Console(DebugExtension.Notice, this, "CurrentInputFeedback: {0}", args.StringValue);
+				CurrentInputFeedback.OutputChange += (sender, args) => this.LogDebug("CurrentInputFeedback: {currentInput}", args.StringValue);
 
 			// lamp hours feedback
 			LampHoursFeedback.LinkInputSig(trilist.UShortInput[joinMap.LampHours.JoinNumber]);
@@ -202,16 +197,13 @@ namespace ChristieProjectorPlugin
 
 				PowerIsOnFeedback.FireUpdate();
 
-				if (CurrentInputFeedback != null)
-					CurrentInputFeedback.FireUpdate();
-				if (CurrentInputNumberFeedback != null)
-					CurrentInputNumberFeedback.FireUpdate();
+				CurrentInputFeedback?.FireUpdate();
+				CurrentInputNumberFeedback?.FireUpdate();
 
 				for (var i = 0; i < InputPorts.Count; i++)
 				{
 					var inputIndex = i;
-					if (InputFeedback != null)
-						InputFeedback[inputIndex].FireUpdate();
+					InputFeedback?[inputIndex].FireUpdate();
 				}
 
 				LampHoursFeedback.FireUpdate();
@@ -226,17 +218,17 @@ namespace ChristieProjectorPlugin
 		#region ICommunicationMonitor Members
 
 		/// <summary>
-		/// IBasicComminication object
+		/// Gets the basic communication object used for device communication
 		/// </summary>
 		public IBasicCommunication Communication { get; private set; }
 
 		/// <summary>
-		/// Gather object
+		/// Gets the communication gather object for parsing incoming messages
 		/// </summary>
 		public CommunicationGather CommunicationGather { get; private set; }
 
 		/// <summary>
-		/// Communication status monitor object
+		/// Gets the communication status monitor for tracking connection health
 		/// </summary>
 		public StatusMonitorBase CommunicationMonitor { get; private set; }
 
@@ -251,28 +243,14 @@ namespace ChristieProjectorPlugin
 
 		private void OnCommunicationGatherLineReceived(object sender, GenericCommMethodReceiveTextArgs args)
 		{
-			if (args == null)
-			{
-				Debug.Console(DebugExtension.Notice, this, "OnCommunicationGatherLineReceived: args are null");
-				return;
-			}
-
-			if (string.IsNullOrEmpty(args.Text))
-			{
-				Debug.Console(DebugExtension.Notice, this, "OnCommunicationGatherLineReceived: args.Text is null or empty");
-				return;
-			}
-
 			try
 			{
-				Debug.Console(DebugExtension.Verbose, this, "OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
+				this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
 				_receiveQueue.Enqueue(new ProcessStringMessage(args.Text, ProcessResponse));
 			}
 			catch (Exception ex)
 			{
-				Debug.Console(DebugExtension.Notice, this, Debug.ErrorLogLevel.Error, "HandleLineReceived Exception: {0}", ex.Message);
-				Debug.Console(DebugExtension.Verbose, this, Debug.ErrorLogLevel.Error, "HandleLineRecieved StackTrace: {0}", ex.StackTrace);
-				if (ex.InnerException != null) Debug.Console(DebugExtension.Notice, this, Debug.ErrorLogLevel.Error, "HandleLineReceived InnerException: '{0}'", ex.InnerException);
+				this.LogError(ex, "Exception in OnCommunicationGatherLineReceived");
 			}
 		}
 
@@ -282,51 +260,47 @@ namespace ChristieProjectorPlugin
 		// TODO [ ] Update based on device responses
 		private void ProcessResponse(string response)
 		{
-            if (string.IsNullOrEmpty(response)) return;
+			if (string.IsNullOrEmpty(response)) return;
 
 
-            var responseValue = 0;
-            var responseType = "";
-		    var responseData = "";
-		
-            try
-            {
+			var responseValue = 0;
+			var responseType = "";
+			try
+			{
 
-                // special case for lamp hour feedback
-		        const string lampHourFb = "Lamp Hours = ";
-                if (response.Contains(lampHourFb))
-		        {
-		            response = response.Substring(response.IndexOf(lampHourFb, System.StringComparison.Ordinal) + lampHourFb.Length, 5);
-                  
-                    if (response.Contains(":"))
-		            {
-		                var tokens = response.Split(':');
-		                LampHours = Int32.Parse(tokens[0]);
-                        Debug.Console(DebugExtension.Notice, this, "Lamp Hours: {0}", LampHours);
-                    }
-                    return;
-		        }
-                
+				// special case for lamp hour feedback
+				const string lampHourFb = "Lamp Hours = ";
+				if (response.Contains(lampHourFb))
+				{
+					response = response.Substring(response.IndexOf(lampHourFb, System.StringComparison.Ordinal) + lampHourFb.Length, 5);
 
-                if (!response.Contains("!")) return;
+					if (response.Contains(":"))
+					{
+						var tokens = response.Split(':');
+						LampHours = int.Parse(tokens[0]);
+					}
+					return;
+				}
 
-			    Debug.Console(DebugExtension.Notice, this, "ProcessResponse: {0}", response);
 
-                var pattern = new Regex(@"\((?<command>[^!]+)!(?<value>\d+)(?: ""(?<data>.+?)"")?", RegexOptions.None);
-                var match = pattern.Match(response);
-                responseType = match.Groups["command"].Value;
-                var responseString = match.Groups["value"].Value;
-                responseData = match.Groups["data"].Value;
-                responseValue = Int32.Parse(responseString);
-                
-            }
-		    catch (Exception e)
-		    {
-                Debug.Console(DebugExtension.Notice, this, "ProcessResponse error parsing, exception: {0}", e.Message);
-            }
-            
-			Debug.Console(DebugExtension.Verbose, this, "ProcessResponse: responseType-'{0}', responseValue-'{1}'", responseType, responseValue);
+				if (!response.Contains("!")) return;
 
+				this.LogVerbose("ProcessResponse: {response}", response);
+
+				var pattern = new Regex(@"\((?<command>[^!]+)!(?<value>\d+)(?: ""(?<data>.+?)"")?", RegexOptions.None);
+				var match = pattern.Match(response);
+				responseType = match.Groups["command"].Value;
+				var responseString = match.Groups["value"].Value;
+				string responseData = match.Groups["data"].Value;
+				responseValue = int.Parse(responseString);
+
+			}
+			catch (Exception ex)
+			{
+				this.LogError(ex, "ProcessResponse exception");
+			}
+
+			this.LogVerbose("ProcessResponse: responseType-{responseType}, responseValue-{responseValue}", responseType, responseValue);
 			switch (responseType)
 			{
 				case "PWR":
@@ -334,45 +308,44 @@ namespace ChristieProjectorPlugin
 						PowerIsOn = responseValue == 1;
 						break;
 					}
-		     	case "SIN":
-			    {
-			        UpdateInputFb(responseValue);
-				    break;
+				case "SIN":
+					{
+						UpdateInputFb(responseValue);
+						break;
 					}
 				case "SHU":
-			    {
-			        VideoMuteIsOn = responseValue == 1;
-			        break;
-			    }
-			    default:
 					{
-						Debug.Console(DebugExtension.Verbose, this, "ProcessRespopnse: unknown response '{0}'", responseType);
+						VideoMuteIsOn = responseValue == 1;
+						break;
+					}
+				default:
+					{
+						this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
 						break;
 					}
 			}
-            
+
 		}
 
 		/// <summary>
-		/// Sends commands, adding delimiter
+		/// Sends commands to the projector, adding the proper delimiter format
 		/// </summary>
-		/// <param name="cmd"></param>
+		/// <param name="cmd">The command string to send to the device</param>
 		public void SendText(string cmd)
 		{
 			if (string.IsNullOrEmpty(cmd)) return;
 
 			if (!Communication.IsConnected)
 			{
-				Debug.Console(DebugExtension.Notice, this, "SendText: device not connected");
+				this.LogWarning("SendText: device not connected");
 				return;
 			}
 
 			var text = string.Format("({0})", cmd);
-			Debug.Console(DebugExtension.Notice, this, "SendText: {0}", text);
 			Communication.SendText(text);
 		}
 
-        // formats outgoing message
+		// formats outgoing message
 		private void SendText(string cmd, string value)
 		{
 			var text = string.IsNullOrEmpty(value)
@@ -389,20 +362,14 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Executes a switch, turning on display if necessary.
+		/// Executes a switch operation, turning on the display if necessary before switching inputs
 		/// </summary>
-		/// <param name="selector"></param>
+		/// <param name="selector">The input selector action to execute</param>
 		public override void ExecuteSwitch(object selector)
 		{
 			if (PowerIsOn)
 			{
-				var action = selector as Action;
-				Debug.Console(0, this, "ExecuteSwitch: action is {0}", action == null ? "null" : "not null");
-				if (action != null)
-				{
-				    action();
-					//CrestronInvoke.BeginInvoke(o => action());
-				}
+				(selector as Action)?.Invoke();
 			}
 			else // if power is off, wait until we get on FB to send it. 
 			{
@@ -414,9 +381,8 @@ namespace ChristieProjectorPlugin
 
 					IsWarmingUpFeedback.OutputChange -= handler;
 
-					var action = selector as Action;
-					Debug.Console(0, this, "ExecuteSwitch: action is {0}", action == null ? "null" : "not null");
-					if (action != null)
+
+					if (selector is Action action)
 					{
 						CrestronInvoke.BeginInvoke(o => action());
 					}
@@ -428,7 +394,7 @@ namespace ChristieProjectorPlugin
 
 
 		/// <summary>
-		/// Starts the Poll Ring
+		/// Initiates the status polling sequence to get current device state
 		/// </summary>
 		public void StatusGet()
 		{
@@ -456,7 +422,7 @@ namespace ChristieProjectorPlugin
 
 
 		/// <summary>
-		/// Power is on property
+		/// Gets or sets the power state of the projector
 		/// </summary>
 		public bool PowerIsOn
 		{
@@ -474,7 +440,7 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Is warming property
+		/// Gets or sets whether the projector is currently warming up
 		/// </summary>
 		public bool IsWarmingUp
 		{
@@ -496,7 +462,7 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Is cooling property
+		/// Gets or sets whether the projector is currently cooling down
 		/// </summary>
 		public bool IsCoolingDown
 		{
@@ -533,7 +499,7 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Set Power On For Device
+		/// Powers on the projector and initiates the warming sequence
 		/// </summary>
 		public override void PowerOn()
 		{
@@ -543,14 +509,14 @@ namespace ChristieProjectorPlugin
 
 			SendText("PWR", 1);
 
-            Thread.Sleep(1500);
+			Thread.Sleep(1500);
 
-		    PowerGet();
+			PowerGet();
 
 		}
 
 		/// <summary>
-		/// Set Power Off for Device
+		/// Powers off the projector and initiates the cooling sequence
 		/// </summary>
 		public override void PowerOff()
 		{
@@ -558,27 +524,27 @@ namespace ChristieProjectorPlugin
 
 			if (PowerIsOn == true) IsCoolingDown = true;
 
-            SendText("PWR", 0);
+			SendText("PWR", 0);
 
 
-            Thread.Sleep(50);
+			Thread.Sleep(50);
 
-            PowerGet();
+			PowerGet();
 
-        }
+		}
 
 		/// <summary>
-		/// Poll Power
+		/// Polls the projector for current power status
 		/// </summary>
 		public void PowerGet()
 		{
-            SendText("PWR", "?");
+			SendText("PWR", "?");
 
 		}
 
 
 		/// <summary>
-		/// Toggle current power state for device
+		/// Toggles the current power state of the projector (on to off, or off to on)
 		/// </summary>
 		public override void PowerToggle()
 		{
@@ -599,27 +565,27 @@ namespace ChristieProjectorPlugin
 		#region Inputs
 
 		/// <summary>
-		/// Input power on constant
+		/// Constant representing the input power on state value
 		/// </summary>
 		public const int InputPowerOn = 101;
 
 		/// <summary>
-		/// Input power off constant
+		/// Constant representing the input power off state value
 		/// </summary>
 		public const int InputPowerOff = 102;
 
 		/// <summary>
-		/// Input key list
+		/// Static list of available input keys for the projector
 		/// </summary>
 		public static List<string> InputKeys = new List<string>();
 
 		/// <summary>
-		/// Input (digital) feedback
+		/// List of boolean feedback objects for digital input selection
 		/// </summary>
 		public List<BoolFeedback> InputFeedback;
 
 		/// <summary>
-		/// Input number (analog) feedback
+		/// Integer feedback object for analog input number reporting
 		/// </summary>
 		public IntFeedback CurrentInputNumberFeedback;
 
@@ -634,7 +600,7 @@ namespace ChristieProjectorPlugin
 		private int _currentInputNumber;
 
 		/// <summary>
-		/// Input number property
+		/// Gets or sets the current input number (1-based index)
 		/// </summary>
 		public int CurrentInputNumber
 		{
@@ -648,7 +614,7 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Sets the requested input
+		/// Sets the active input by number (1-based index). Validates range and executes the input switch.
 		/// </summary>
 		public int SetInput
 		{
@@ -656,26 +622,22 @@ namespace ChristieProjectorPlugin
 			{
 				if (value <= 0 || value > InputPorts.Count)
 				{
-					Debug.Console(DebugExtension.Notice, this, "SetInput: value-'{0}' is out of range (1 - {1})", value, InputPorts.Count);
+					this.LogError("SetInput: value-{inputValue} is out of range (1 - {inputPortsCount})", value, InputPorts.Count);
 					return;
 				}
 
-				Debug.Console(DebugExtension.Notice, this, "SetInput: value-'{0}'", value);
+				this.LogDebug("SetInput: value-{input}", value);
 
 				// -1 to get actual input in list after 0d check
 				var port = GetInputPort(value - 1);
 				if (port == null)
 				{
-					Debug.Console(DebugExtension.Notice, this, "SetInput: failed to get input port");
+					this.LogWarning("SetInput: failed to get input port");
 					return;
 				}
 
-				Debug.Console(DebugExtension.Verbose, this, "SetInput: port.key-'{0}', port.Selector-'{1}', port.ConnectionType-'{2}', port.FeebackMatchObject-'{3}'",
-					port.Key, port.Selector, port.ConnectionType, port.FeedbackMatchObject);
-
 				ExecuteSwitch(port.Selector);
 			}
-
 		}
 
 		private RoutingInputPort GetInputPort(int input)
@@ -691,24 +653,24 @@ namespace ChristieProjectorPlugin
 					return "HDMI 1";
 				case "hdmiIn2":
 					return "HDMI 2";
-                case "hdmiIn3":
-                    return "HDBaseT";
-                case "displayPortIn1":
+				case "hdmiIn3":
+					return "HDBaseT";
+				case "displayPortIn1":
 					return "Display Port 1";
-                case "displayPortIn2":
+				case "displayPortIn2":
 					return "Display Port 2";
-                case "rgbIn1":
-                    return "SDI 1";
-                case "rgbIn2":
-                    return "SDI 2";
-                case "vgaIn1":
-                    return "SDI 3";
-                case "hdmiIn4":
-                    return "SDI 4";
-                case "hdmiIn5":
-                    return "Digital Link 1";
-                case "hdmiIn6":
-                    return "Digital Link 2";
+				case "rgbIn1":
+					return "SDI 1";
+				case "rgbIn2":
+					return "SDI 2";
+				case "vgaIn1":
+					return "SDI 3";
+				case "hdmiIn4":
+					return "SDI 4";
+				case "hdmiIn5":
+					return "Digital Link 1";
+				case "hdmiIn6":
+					return "Digital Link 2";
 
 
 				default:
@@ -732,43 +694,42 @@ namespace ChristieProjectorPlugin
 				new RoutingInputPort(RoutingPortNames.HdmiIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.Hdmi, new Action(InputHdmi2), this), 2);
 
-            AddRoutingInputPort(
-            new RoutingInputPort(RoutingPortNames.HdmiIn3, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-                eRoutingPortConnectionType.Streaming, new Action(InputHdbaseT), this), 3);
+			AddRoutingInputPort(
+			new RoutingInputPort(RoutingPortNames.HdmiIn3, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+					eRoutingPortConnectionType.Streaming, new Action(InputHdbaseT), this), 3);
 
-            AddRoutingInputPort(
-                new RoutingInputPort(RoutingPortNames.DisplayPortIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-                    eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort1), this), 4);
+			AddRoutingInputPort(
+					new RoutingInputPort(RoutingPortNames.DisplayPortIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+							eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort1), this), 4);
 
-            AddRoutingInputPort(
-                new RoutingInputPort(RoutingPortNames.DisplayPortIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-                    eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort2), this), 5);
+			AddRoutingInputPort(
+					new RoutingInputPort(RoutingPortNames.DisplayPortIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+							eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort2), this), 5);
 
 			AddRoutingInputPort(
 				new RoutingInputPort(RoutingPortNames.RgbIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.Sdi, new Action(InputSdi1), this), 6);
 
-            AddRoutingInputPort(
-                new RoutingInputPort(RoutingPortNames.RgbIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-                    eRoutingPortConnectionType.Sdi, new Action(InputSdi2), this), 7);
-
-            AddRoutingInputPort(
-                new RoutingInputPort(RoutingPortNames.VgaIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-                    eRoutingPortConnectionType.Sdi, new Action(InputSdi3), this), 8);
-
-            AddRoutingInputPort(
-                new RoutingInputPort(RoutingPortNames.HdmiIn4, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-                    eRoutingPortConnectionType.Sdi, new Action(InputSdi4), this), 9);
-
-     
-            // RoutingPortNames does not contain Link 1, using HdmiIn5
 			AddRoutingInputPort(
-				new RoutingInputPort(RoutingPortNames.HdmiIn5, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+					new RoutingInputPort(RoutingPortNames.RgbIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+							eRoutingPortConnectionType.Sdi, new Action(InputSdi2), this), 7);
+
+			AddRoutingInputPort(
+					new RoutingInputPort(RoutingPortNames.VgaIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+							eRoutingPortConnectionType.Sdi, new Action(InputSdi3), this), 8);
+
+			AddRoutingInputPort(
+					new RoutingInputPort(RoutingPortNames.HdmiIn4, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+							eRoutingPortConnectionType.Sdi, new Action(InputSdi4), this), 9);
+
+
+			AddRoutingInputPort(
+				new RoutingInputPort("link1", eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink1), this), 10);
-            
-            // RoutingPortNames does not contain Link 2, using HdmiIn6
+
+
 			AddRoutingInputPort(
-				new RoutingInputPort(RoutingPortNames.HdmiIn6, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+				new RoutingInputPort("link2", eRoutingSignalType.Audio | eRoutingSignalType.Video,
 					eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink2), this), 11);
 
 			// initialize feedbacks after adding input ports
@@ -780,34 +741,23 @@ namespace ChristieProjectorPlugin
 				var input = i + 1;
 				InputFeedback.Add(new BoolFeedback(() =>
 				{
-					Debug.Console(DebugExtension.Notice, this, "CurrentInput Number: {0}; input: {1};", CurrentInputNumber, input);
 					return CurrentInputNumber == input;
 				}));
 			}
 
 			CurrentInputNumberFeedback = new IntFeedback(() =>
 			{
-				Debug.Console(DebugExtension.Verbose, this, "CurrentInputNumberFeedback: {0}", CurrentInputNumber);
 				return CurrentInputNumber;
 			});
-		}
 
-		/// <summary>
-		/// Lists available input routing ports
-		/// </summary>
-		public void ListRoutingInputPorts()
-		{
-			var index = 0;
-			foreach (var inputPort in InputPorts)
+			Inputs = new ChristieProjectorInputs()
 			{
-				Debug.Console(0, this, "ListRoutingInputPorts: index-'{0}' key-'{1}', connectionType-'{2}', feedbackMatchObject-'{3}'",
-					index, inputPort.Key, inputPort.ConnectionType, inputPort.FeedbackMatchObject);
-				index++;
-			}
+				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, p.Key, p.Selector as Action) as ISelectableItem)
+			};
 		}
 
 		/// <summary>
-		/// Select Hdmi 1
+		/// Selects HDMI input 1 on the projector
 		/// </summary>
 		public void InputHdmi1()
 		{
@@ -817,153 +767,163 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Select Hdmi 2
+		/// Selects HDMI input 2 on the projector
 		/// </summary>
 		public void InputHdmi2()
 		{
-            SendText("SIN", 2);			
+			SendText("SIN", 2);
 			Thread.Sleep(2000);
 			InputGet();
 		}
 
-        /// <summary>
-        /// Select Hdmi 3 > InputHDBaseT
-        /// </summary>
-        public void InputHdbaseT()
-        {
-            SendText("SIN", 3);
-            Thread.Sleep(2000);
-            InputGet();
-        }
+		/// <summary>
+		/// Selects HDBaseT input (HDMI 3) on the projector
+		/// </summary>
+		public void InputHdbaseT()
+		{
+			SendText("SIN", 3);
+			Thread.Sleep(2000);
+			InputGet();
+		}
 
-
-        /// <summary>
-        /// Select DP 1
-        /// </summary>
-        public void InputDisplayPort1()
-        {
-            SendText("SIN", 4);
-            Thread.Sleep(2000);
-            InputGet();
-        }
-
-        /// <summary>
-        /// Select DP 2
-        /// </summary>
-        public void InputDisplayPort2()
-        {
-            SendText("SIN", 5);
-            Thread.Sleep(2000);
-            InputGet();
-        }
 
 		/// <summary>
-		/// SDI1
+		/// Selects DisplayPort input 1 on the projector
+		/// </summary>
+		public void InputDisplayPort1()
+		{
+			SendText("SIN", 4);
+			Thread.Sleep(2000);
+			InputGet();
+		}
+
+		/// <summary>
+		/// Selects DisplayPort input 2 on the projector
+		/// </summary>
+		public void InputDisplayPort2()
+		{
+			SendText("SIN", 5);
+			Thread.Sleep(2000);
+			InputGet();
+		}
+
+		/// <summary>
+		/// Selects SDI input 1 on the projector
 		/// </summary>
 		public void InputSdi1()
 		{
-            SendText("SIN", 6);
-			
+			SendText("SIN", 6);
+
 			Thread.Sleep(2000);
 			InputGet();
 		}
 
-        /// <summary>
-        /// SDI1
-        /// </summary>
-        public void InputSdi2()
-        {
-            SendText("SIN", 7);
+		/// <summary>
+		/// Selects SDI input 2 on the projector
+		/// </summary>
+		public void InputSdi2()
+		{
+			SendText("SIN", 7);
 
-            Thread.Sleep(2000);
-            InputGet();
-        }
+			Thread.Sleep(2000);
+			InputGet();
+		}
 
-        /// <summary>
-        /// SDI1
-        /// </summary>
-        public void InputSdi3()
-        {
-            SendText("SIN", 8);
+		/// <summary>
+		/// Selects SDI input 3 on the projector
+		/// </summary>
+		public void InputSdi3()
+		{
+			SendText("SIN", 8);
 
-            Thread.Sleep(2000);
-            InputGet();
-        }
+			Thread.Sleep(2000);
+			InputGet();
+		}
 
-        /// <summary>
-        /// SDI1
-        /// </summary>
-        public void InputSdi4()
-        {
-            SendText("SIN", 9);
+		/// <summary>
+		/// Selects SDI input 4 on the projector
+		/// </summary>
+		public void InputSdi4()
+		{
+			SendText("SIN", 9);
 
-            Thread.Sleep(2000);
-            InputGet();
-        }
+			Thread.Sleep(2000);
+			InputGet();
+		}
 
 
 		/// <summary>
-		/// Select input DVI terminal 1 (Input B)
+		/// Selects Digital Link input 1 on the projector
 		/// </summary>
 		public void InputDigitalLink1()
 		{
-            SendText("SIN", 10);
-			
+			SendText("SIN", 10);
+
 			Thread.Sleep(2000);
 			InputGet();
 		}
 
 
-        /// <summary>
-        /// Select input DisplayPort
-        /// </summary>
-        public void InputDigitalLink2()
-        {
-            SendText("SIN", 11);
-			
-            Thread.Sleep(2000);
-            InputGet();
-        }
-
-		
-        /// <summary>
-		/// Toggles the display input
+		/// <summary>
+		/// Selects Digital Link input 2 on the projector
 		/// </summary>
+		public void InputDigitalLink2()
+		{
+			SendText("SIN", 11);
+
+			Thread.Sleep(2000);
+			InputGet();
+		}
+
+
+		/// <summary>
+		/// Toggles between available inputs (not implemented for this device)
+		/// </summary>
+		/// <exception cref="NotImplementedException">Input toggle is not supported on this device</exception>
 		public void InputToggle()
 		{
 			throw new NotImplementedException("InputToggle is not supported");
 		}
 
 		/// <summary>
-		/// Poll input
+		/// Polls the projector for current input selection status
 		/// </summary>
 		public void InputGet()
 		{
-            SendText("SIN", "?");
-			
+			SendText("SIN", "?");
+
 		}
 
 		/// <summary>
-		/// Process Input Feedback from Response
+		/// Processes input feedback from the device response and updates current input state
 		/// </summary>
-		/// <param name="input">response from device</param>
+		/// <param name="input">The input number returned from the device</param>
 		public void UpdateInputFb(int input)
 		{
 			var newInput = InputPorts.FirstOrDefault(i => i.FeedbackMatchObject.Equals(input));
 			if (newInput == null) return;
 			if (newInput == _currentInputPort)
 			{
-				Debug.Console(DebugExtension.Notice, this, "UpdateInputFb: _currentInputPort-'{0}' == newInput-'{1}'", _currentInputPort.Key, newInput.Key);
+				this.LogDebug("UpdateInputFb: _currentInputPort-'{currentInputPort}' == newInput-'{newInputPort}'", _currentInputPort.Key, newInput.Key);
 				return;
 			}
 
-			Debug.Console(DebugExtension.Notice, this, "UpdateInputFb: newInput key-'{0}', connectionType-'{1}', feedbackMatchObject-'{2}'",
-				newInput.Key, newInput.ConnectionType, newInput.FeedbackMatchObject);
+			if (Inputs.Items.TryGetValue(newInput.Key, out var inputItem))
+			{
+				foreach (var item in Inputs.Items.Values)
+				{
+					item.IsSelected = item.Key == inputItem.Key;
+				}
+
+				Inputs.CurrentItem = inputItem.Key;
+			}
+			else
+			{
+				this.LogWarning("UpdateInputFb: Input '{inputKey}' not found in Inputs.Items", newInput.Key);
+			}
 
 			_currentInputPort = newInput;
 			CurrentInputFeedback.FireUpdate();
-
-			Debug.Console(DebugExtension.Notice, this, "UpdateInputFb: _currentInputPort.key-'{0}'", _currentInputPort.Key);
 
 			switch (_currentInputPort.Key)
 			{
@@ -985,21 +945,21 @@ namespace ChristieProjectorPlugin
 				case RoutingPortNames.RgbIn1:
 					CurrentInputNumber = 6;
 					break;
-                case RoutingPortNames.RgbIn2:
-                    CurrentInputNumber = 7;
-                    break;
-                case RoutingPortNames.VgaIn1:
-                    CurrentInputNumber = 8;
-                    break;
-                case RoutingPortNames.HdmiIn4:
-                    CurrentInputNumber = 9;
-                    break;
-                case RoutingPortNames.HdmiIn5:
-                    CurrentInputNumber = 10;
-                    break;
-                case RoutingPortNames.HdmiIn6:
-                    CurrentInputNumber = 11;
-                    break;
+				case RoutingPortNames.RgbIn2:
+					CurrentInputNumber = 7;
+					break;
+				case RoutingPortNames.VgaIn1:
+					CurrentInputNumber = 8;
+					break;
+				case RoutingPortNames.HdmiIn4:
+					CurrentInputNumber = 9;
+					break;
+				case RoutingPortNames.HdmiIn5:
+					CurrentInputNumber = 10;
+					break;
+				case RoutingPortNames.HdmiIn6:
+					CurrentInputNumber = 11;
+					break;
 			}
 		}
 
@@ -1018,17 +978,17 @@ namespace ChristieProjectorPlugin
 
 
 
-		#region lmapHours
+		#region lampHours
 
 		/// <summary>
-		/// Lamp hours feedback
+		/// Gets or sets the feedback object for reporting lamp hours
 		/// </summary>
 		public IntFeedback LampHoursFeedback { get; set; }
 
 		private int _lampHours;
 
 		/// <summary>
-		/// Lamp hours property
+		/// Gets or sets the current lamp hours value
 		/// </summary>
 		public int LampHours
 		{
@@ -1041,12 +1001,12 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Polls for lamp hours/laser runtime
+		/// Polls the projector for current lamp hours or laser runtime
 		/// </summary>
 		public void LampGet()
 		{
-            SendText("ILI", "?");
-			
+			SendText("ILI", "?");
+
 		}
 
 		#endregion
@@ -1060,7 +1020,7 @@ namespace ChristieProjectorPlugin
 
 
 		/// <summary>
-		/// Video mute is on 
+		/// Gets or sets the video mute state of the projector
 		/// </summary>
 		public bool VideoMuteIsOn
 		{
@@ -1078,37 +1038,49 @@ namespace ChristieProjectorPlugin
 		}
 
 		/// <summary>
-		/// Video mute feedback
+		/// Gets or sets the feedback object for video mute state
 		/// </summary>
 		public BoolFeedback VideoMuteIsOnFeedback;
 
+		/// <summary>
+		/// Polls the projector for current video mute status
+		/// </summary>
 		public void VideoMuteGet()
 		{
-		    SendText("SHU", "?");
+			SendText("SHU", "?");
 		}
 
+		/// <summary>
+		/// Turns on video mute (blanks the display output)
+		/// </summary>
 		public void VideoMuteOn()
 		{
-            SendText("SHU", 1);
-		    
-            Thread.Sleep(25);
-            VideoMuteGet();
+			SendText("SHU", 1);
+
+			Thread.Sleep(25);
+			VideoMuteGet();
 
 		}
 
+		/// <summary>
+		/// Turns off video mute (restores the display output)
+		/// </summary>
 		public void VideoMuteOff()
 		{
-            SendText("SHU", 0);
+			SendText("SHU", 0);
 
-            Thread.Sleep(25);
-            VideoMuteGet();
+			Thread.Sleep(25);
+			VideoMuteGet();
 		}
 
+		/// <summary>
+		/// Toggles the current video mute state (on to off, or off to on)
+		/// </summary>
 		public void VideoMuteToggle()
 		{
-			if(VideoMuteIsOn)
+			if (VideoMuteIsOn)
 				VideoMuteOff();
-			else 
+			else
 				VideoMuteOn();
 		}
 
