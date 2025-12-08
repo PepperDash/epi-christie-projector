@@ -22,7 +22,7 @@ namespace ChristieProjectorPlugin
 	/// input routing, power management, and video mute functionality
 	/// </summary>
 	public class Christie4K7HsController : TwoWayDisplayBase, ICommunicationMonitor, IBridgeAdvanced,
-		IHasInputs<string>
+		IHasInputs<string>, IRoutingSinkWithSwitchingWithInputPort
 	{
 
 		private bool _isSerialComm;
@@ -577,14 +577,11 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public IntFeedback CurrentInputNumberFeedback;
 
-		private RoutingInputPort _currentInputPort;
-
 		protected override Func<string> CurrentInputFeedbackFunc
 		{
-			get { return () => _currentInputPort != null ? _currentInputPort.Key : string.Empty; }
+			get { return () => CurrentInputPort != null ? CurrentInputPort.Key : string.Empty; }
 		}
 
-		private List<bool> _inputFeedback;
 		private int _currentInputNumber;
 
 		/// <summary>
@@ -687,7 +684,7 @@ namespace ChristieProjectorPlugin
 					eRoutingPortConnectionType.Streaming, new Action(InputSlot2), this), 14);
 
 			// initialize feedbacks after adding input ports
-			_inputFeedback = new List<bool>();
+
 			InputFeedback = new List<BoolFeedback>();
 
 			for (var i = 0; i < InputPorts.Count; i++)
@@ -821,9 +818,9 @@ namespace ChristieProjectorPlugin
 			var newInput = InputPorts.FirstOrDefault(i => i.FeedbackMatchObject.Equals(input));
 			if (newInput == null) return;
 
-			if (newInput == _currentInputPort)
+			if (newInput == CurrentInputPort)
 			{
-				this.LogDebug("UpdateInputFb: _currentInputPort-'{currentInputPort}' == newInput-'{newInputPort}'", _currentInputPort.Key, newInput.Key);
+				this.LogDebug("UpdateInputFb: CurrentInputPort-'{currentInputPort}' == newInput-'{newInputPort}'", CurrentInputPort.Key, newInput.Key);
 				return;
 			}
 
@@ -841,10 +838,11 @@ namespace ChristieProjectorPlugin
 				this.LogWarning("UpdateInputFb: Input '{inputKey}' not found in Inputs.Items", newInput.Key);
 			}
 
-			_currentInputPort = newInput;
+			CurrentInputPort = newInput;
+
 			CurrentInputFeedback.FireUpdate();
 
-			switch (_currentInputPort.Key)
+			switch (CurrentInputPort.Key)
 			{
 				case RoutingPortNames.HdmiIn1:
 					CurrentInputNumber = 1;
