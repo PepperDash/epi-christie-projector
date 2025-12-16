@@ -21,7 +21,7 @@ namespace ChristieProjectorPlugin
 	/// input routing, power management, and video mute functionality
 	/// </summary>
 	public class Christie4K25RgbController : TwoWayDisplayBase, ICommunicationMonitor,
-		IBridgeAdvanced, IHasInputs<string>
+		IBridgeAdvanced, IHasInputs<string>, IRoutingSinkWithSwitchingWithInputPort
 	{
 
 		private bool _isSerialComm;
