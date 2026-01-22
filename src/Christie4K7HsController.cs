@@ -260,6 +260,14 @@ namespace ChristieProjectorPlugin
 		private void ProcessResponse(string response)
 		{
 			if (string.IsNullOrEmpty(response)) return;
+			
+			// Handle error responses
+			if (response.Contains("ERR"))
+			{
+				this.LogWarning("ProcessResponse: Device error - {response}", response);
+				return;
+			}
+			
 			if (!response.Contains("!")) return;
 
 			this.LogVerbose("ProcessResponse: {response}", response);
@@ -929,7 +937,8 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void VideoMuteGet()
 		{
-			SendText("SHU", "?");
+			// SHU command is disabled on this device
+			return;
 		}
 
 		/// <summary>
@@ -937,10 +946,8 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void VideoMuteOn()
 		{
-			SendText("SHU", 1);
-
-			Thread.Sleep(25);
-			VideoMuteGet();
+			// SHU command is disabled on this device
+			return;
 		}
 
 		/// <summary>
@@ -948,10 +955,8 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void VideoMuteOff()
 		{
-			SendText("SHU", 0);
-
-			Thread.Sleep(25);
-			VideoMuteGet();
+			// SHU command is disabled on this device
+			return;
 		}
 
 		/// <summary>
