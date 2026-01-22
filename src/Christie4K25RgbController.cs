@@ -21,7 +21,7 @@ namespace ChristieProjectorPlugin
 	/// input routing, power management, and video mute functionality
 	/// </summary>
 	public class Christie4K25RgbController : TwoWayDisplayBase, ICommunicationMonitor,
-		IBridgeAdvanced, IHasInputs<string>, IRoutingSinkWithSwitchingWithInputPort
+		IBridgeAdvanced, IHasInputs<string>, IRoutingSinkWithSwitchingWithInputPort, IBasicVideoMuteWithFeedback
 	{
 
 		private bool _isSerialComm;
@@ -68,7 +68,7 @@ namespace ChristieProjectorPlugin
 
 			DeviceManager.AddDevice(CommunicationMonitor);
 
-			VideoMuteIsOnFeedback = new BoolFeedback(() => VideoMuteIsOn);
+			VideoMuteIsOn = new BoolFeedback(() => _videoMuteState);
 
 			WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
 			CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
@@ -180,8 +180,8 @@ namespace ChristieProjectorPlugin
 			trilist.SetSigTrueAction(joinMap.VideoMuteOn.JoinNumber, VideoMuteOn);
 			trilist.SetSigTrueAction(joinMap.VideoMuteOff.JoinNumber, VideoMuteOff);
 			trilist.SetSigTrueAction(joinMap.VideoMuteToggle.JoinNumber, VideoMuteToggle);
-			VideoMuteIsOnFeedback.LinkInputSig(trilist.BooleanInput[joinMap.VideoMuteOn.JoinNumber]);
-			VideoMuteIsOnFeedback.LinkComplementInputSig(trilist.BooleanInput[joinMap.VideoMuteOff.JoinNumber]);
+			VideoMuteIsOn.LinkInputSig(trilist.BooleanInput[joinMap.VideoMuteOn.JoinNumber]);
+			VideoMuteIsOn.LinkComplementInputSig(trilist.BooleanInput[joinMap.VideoMuteOff.JoinNumber]);
 
 			// bridge online change
 			trilist.OnlineStatusChange += (sender, args) =>
@@ -315,7 +315,8 @@ namespace ChristieProjectorPlugin
 					}
 				case "SHU":
 					{
-						VideoMuteIsOn = responseValue == 1;
+						_videoMuteState = responseValue == 1;
+						VideoMuteIsOn.FireUpdate();
 						break;
 					}
 				default:
@@ -1014,31 +1015,13 @@ namespace ChristieProjectorPlugin
 
 		#region videoMute
 
-		private bool _videoMuteIsOn;
+		private bool _videoMuteState;
 
-
-		/// <summary>
-		/// Gets or sets the video mute state of the projector
-		/// </summary>
-		public bool VideoMuteIsOn
-		{
-			get { return _videoMuteIsOn; }
-			set
-			{
-				if (_videoMuteIsOn == value)
-				{
-					return;
-				}
-
-				_videoMuteIsOn = value;
-				VideoMuteIsOnFeedback.FireUpdate();
-			}
-		}
 
 		/// <summary>
 		/// Gets or sets the feedback object for video mute state
 		/// </summary>
-		public BoolFeedback VideoMuteIsOnFeedback;
+		public BoolFeedback VideoMuteIsOn { get; private set; }
 
 		/// <summary>
 		/// Polls the projector for current video mute status
@@ -1076,7 +1059,7 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void VideoMuteToggle()
 		{
-			if (VideoMuteIsOn)
+			if (VideoMuteIsOn.BoolValue)
 				VideoMuteOff();
 			else
 				VideoMuteOn();
