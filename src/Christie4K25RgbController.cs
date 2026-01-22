@@ -1019,7 +1019,7 @@ namespace ChristieProjectorPlugin
 
 
 		/// <summary>
-		/// Gets or sets the feedback object for video mute state
+		/// Gets the feedback object for video mute state
 		/// </summary>
 		public BoolFeedback VideoMuteIsOn { get; private set; }
 
