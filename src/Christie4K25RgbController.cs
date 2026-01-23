@@ -235,6 +235,10 @@ namespace ChristieProjectorPlugin
 		private const string GatherDelimiter = @"\)";
 
 		private readonly GenericQueue _receiveQueue;
+		private long _lastSendTimeMs = 0;
+		private const int MinSendIntervalMs = 100; // Minimum milliseconds between sends
+		private readonly object _sendLock = new object();
+		private readonly Queue<string> _commandQueue = new Queue<string>();
 
 		private void OnCommunicationMonitorStatusChange(object sender, MonitorStatusChangeEventArgs args)
 		{
@@ -336,14 +340,8 @@ namespace ChristieProjectorPlugin
 		{
 			if (string.IsNullOrEmpty(cmd)) return;
 
-			if (!Communication.IsConnected)
-			{
-				this.LogWarning("SendText: device not connected");
-				return;
-			}
-
 			var text = string.Format("({0})", cmd);
-			Communication.SendText(text);
+			SendCommandQueued(text);
 		}
 
 		// formats outgoing message
@@ -352,14 +350,83 @@ namespace ChristieProjectorPlugin
 			var text = string.IsNullOrEmpty(value)
 				? "?"
 				: string.Format("({0}{1})", cmd, value);
-			Communication.SendText(text);
+			SendCommandQueued(text);
 		}
 
 		// formats outgoing message
 		private void SendText(string cmd, int value)
 		{
 			// tx format: "({cmd}{value})]"
-			Communication.SendText(string.Format("({0}{1})", cmd, value));
+			SendCommandQueued(string.Format("({0}{1})", cmd, value));
+		}
+
+		/// <summary>
+		/// Queues a formatted command for sending with state checking and throttling.
+		/// Commands are held if device is warming up or cooling down, then sent when ready.
+		/// </summary>
+		private void SendCommandQueued(string text)
+		{
+			if (string.IsNullOrEmpty(text)) return;
+
+			if (!Communication.IsConnected)
+			{
+				this.LogWarning("SendCommandQueued: device not connected");
+				return;
+			}
+
+			lock (_sendLock)
+			{
+				// Queue the command
+				_commandQueue.Enqueue(text);
+				this.LogVerbose("SendCommandQueued: Command queued: {text}. Queue size: {queueSize}", text, _commandQueue.Count);
+				
+				// Try to process queue
+				ProcessCommandQueue();
+			}
+		}
+
+		/// <summary>
+		/// Processes the command queue, sending commands only when device is ready.
+		/// Commands are held if device is warming or cooling.
+		/// </summary>
+		private void ProcessCommandQueue()
+		{
+			// Don't send if device is warming or cooling
+			if (IsWarmingUp || IsCoolingDown)
+			{
+				this.LogVerbose("ProcessCommandQueue: Device warming={IsWarmingUp} or cooling={IsCoolingDown}. Queue held.", IsWarmingUp, IsCoolingDown);
+				return;
+			}
+
+			while (_commandQueue.Count > 0)
+			{
+				try
+				{
+					string text = _commandQueue.Peek();
+
+					// Calculate time to wait based on minimum send interval
+					long currentTimeMs = Convert.ToInt64(DateTime.Now.ToUniversalTime().Subtract(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds);
+					long timeSinceLastSendMs = currentTimeMs - _lastSendTimeMs;
+
+					if (timeSinceLastSendMs < MinSendIntervalMs)
+					{
+						long delayMs = MinSendIntervalMs - timeSinceLastSendMs;
+						this.LogVerbose("ProcessCommandQueue: Throttling for {delayMs}ms", delayMs);
+						Thread.Sleep((int)delayMs);
+					}
+
+					// Send the command
+					Communication.SendText(text);
+					_lastSendTimeMs = Convert.ToInt64(DateTime.Now.ToUniversalTime().Subtract(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds);
+					_commandQueue.Dequeue(); // Remove from queue after successful send
+					this.LogVerbose("ProcessCommandQueue: Sent {text}. Remaining in queue: {queueSize}", text, _commandQueue.Count);
+				}
+				catch (Exception ex)
+				{
+					this.LogError(ex, "Exception in ProcessCommandQueue");
+					break; // Stop processing if there's an error
+				}
+			}
 		}
 
 		/// <summary>
@@ -457,7 +524,20 @@ namespace ChristieProjectorPlugin
 					{
 						_isWarmingUp = false;
 						IsWarmingUpFeedback.FireUpdate();
+						// Process any queued commands now that warmup is complete
+						lock (_sendLock)
+						{
+							ProcessCommandQueue();
+						}
 					}, WarmupTime);
+				}
+				else
+				{
+					// Warmup completed, process queued commands
+					lock (_sendLock)
+					{
+						ProcessCommandQueue();
+					}
 				}
 			}
 		}
@@ -479,7 +559,20 @@ namespace ChristieProjectorPlugin
 					{
 						_isCoolingDown = false;
 						IsCoolingDownFeedback.FireUpdate();
+						// Process any queued commands now that cooldown is complete
+						lock (_sendLock)
+						{
+							ProcessCommandQueue();
+						}
 					}, CooldownTime);
+				}
+				else
+				{
+					// Cooldown completed, process queued commands
+					lock (_sendLock)
+					{
+						ProcessCommandQueue();
+					}
 				}
 			}
 		}
