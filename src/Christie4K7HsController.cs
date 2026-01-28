@@ -248,7 +248,7 @@ namespace ChristieProjectorPlugin
 		{
 			try
 			{
-				this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
+				//this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
 				_receiveQueue.Enqueue(new ProcessStringMessage(args.Text, ProcessResponse));
 			}
 			catch (Exception ex)
@@ -266,7 +266,7 @@ namespace ChristieProjectorPlugin
 			if (string.IsNullOrEmpty(response)) return;
 			if (!response.Contains("!")) return;
 
-			this.LogVerbose("ProcessResponse: {response}", response);
+			//this.LogVerbose("ProcessResponse: {response}", response);
 
 			var responseValue = 0;
 			var responseType = "";
@@ -286,7 +286,7 @@ namespace ChristieProjectorPlugin
 				this.LogError(ex, "ProcessResponse exception");
 			}
 
-			this.LogVerbose("ProcessResponse: responseType-{responseType}, responseValue-{responseValue}", responseType, responseValue);
+			//this.LogVerbose("ProcessResponse: responseType-{responseType}, responseValue-{responseValue}", responseType, responseValue);
 
 			switch (responseType)
 			{
@@ -299,12 +299,12 @@ namespace ChristieProjectorPlugin
 					if (newPowerState && IsWarmingUp)
 					{
 						IsWarmingUp = false; // Got power on feedback, clear warming
-						this.LogVerbose("ProcessResponse: Received PWR!1 feedback, clearing IsWarmingUp");
+						//this.LogVerbose("ProcessResponse: Received PWR!1 feedback, clearing IsWarmingUp");
 					}
 					else if (!newPowerState && IsCoolingDown)
 					{
 						IsCoolingDown = false; // Got power off feedback, clear cooling
-						this.LogVerbose("ProcessResponse: Received PWR!0 feedback, clearing IsCoolingDown");
+						//this.LogVerbose("ProcessResponse: Received PWR!0 feedback, clearing IsCoolingDown");
 					}
 					break;
 				}
@@ -327,7 +327,7 @@ namespace ChristieProjectorPlugin
 					}
 				default:
 					{
-						this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
+						//this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
 						break;
 					}
 			}
