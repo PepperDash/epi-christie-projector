@@ -60,7 +60,7 @@ namespace ChristieProjectorPlugin
 
 			_isSerialComm = !(Communication is ISocketStatus socket);
 
-			var pollIntervalMs = props.PollIntervalMs > 45000 ? props.PollIntervalMs : 45000;
+			var pollIntervalMs = props.PollIntervalMs >= 10000 ? props.PollIntervalMs : 10000;
 			CommunicationMonitor = new GenericCommunicationMonitor(this, Communication, pollIntervalMs, 180000, 300000,
 				StatusGet);
 
@@ -309,7 +309,20 @@ namespace ChristieProjectorPlugin
 			{
 				case "PWR":
 					{
-						PowerIsOn = responseValue == 1;
+						bool newPowerState = responseValue == 1;
+						PowerIsOn = newPowerState;
+						
+						// Clear warming/cooling flags when we get the actual power feedback
+						if (newPowerState && IsWarmingUp)
+						{
+							IsWarmingUp = false; // Got power on feedback, clear warming
+							this.LogVerbose("ProcessResponse: Received PWR!1 feedback, clearing IsWarmingUp");
+						}
+						else if (!newPowerState && IsCoolingDown)
+						{
+							IsCoolingDown = false; // Got power off feedback, clear cooling
+							this.LogVerbose("ProcessResponse: Received PWR!0 feedback, clearing IsCoolingDown");
+						}
 						break;
 					}
 				case "SIN":
@@ -362,7 +375,8 @@ namespace ChristieProjectorPlugin
 
 		/// <summary>
 		/// Queues a formatted command for sending with state checking and throttling.
-		/// Commands are held if device is warming up or cooling down, then sent when ready.
+		/// Control commands trigger warming/cooling flags based on the command type.
+		/// Query commands (containing ?) are sent immediately without queuing.
 		/// </summary>
 		private void SendCommandQueued(string text)
 		{
@@ -374,11 +388,49 @@ namespace ChristieProjectorPlugin
 				return;
 			}
 
+			// Query commands (containing ?) bypass queue and send immediately
+			if (text.Contains("?"))
+			{
+				lock (_sendLock)
+				{
+					try
+					{
+						Communication.SendText(text);
+						this.LogVerbose("SendCommandQueued: Query sent immediately: {text}", text);
+					}
+					catch (Exception ex)
+					{
+						this.LogError(ex, "Exception sending query command");
+					}
+				}
+				return;
+			}
+
 			lock (_sendLock)
 			{
+				// Check if this is a power control command (not a query)
+				// PWR!1 = power on -> expect warming
+				// PWR!0 = power off -> expect cooling
+				if (text.Contains("(PWR!1)"))
+				{
+					if (!IsWarmingUp)
+					{
+						IsWarmingUp = true;
+						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
+					}
+				}
+				else if (text.Contains("(PWR!0)"))
+				{
+					if (!IsCoolingDown)
+					{
+						IsCoolingDown = true;
+						this.LogVerbose("SendCommandQueued: Power OFF command queued, setting IsCoolingDown=true. Cooling time: {CooldownTimeMs}ms", CooldownTime);
+					}
+				}
+
 				// Queue the command
 				_commandQueue.Enqueue(text);
-				this.LogVerbose("SendCommandQueued: Command queued: {text}. Queue size: {queueSize}", text, _commandQueue.Count);
+				this.LogVerbose("SendCommandQueued: Control command queued: {text}. Queue size: {queueSize}", text, _commandQueue.Count);
 				
 				// Try to process queue
 				ProcessCommandQueue();
@@ -387,23 +439,24 @@ namespace ChristieProjectorPlugin
 
 		/// <summary>
 		/// Processes the command queue, sending commands only when device is ready.
+		/// Only control commands are in queue; queries are sent immediately bypassing queue.
 		/// Commands are held if device is warming or cooling.
 		/// </summary>
 		private void ProcessCommandQueue()
 		{
-			// Don't send if device is warming or cooling
-			if (IsWarmingUp || IsCoolingDown)
-			{
-				this.LogVerbose("ProcessCommandQueue: Device warming={IsWarmingUp} or cooling={IsCoolingDown}. Queue held.", IsWarmingUp, IsCoolingDown);
-				return;
-			}
-
 			while (_commandQueue.Count > 0)
 			{
+				string text = _commandQueue.Peek();
+				
+				// Block control commands if warming or cooling
+				if (IsWarmingUp || IsCoolingDown)
+				{
+					this.LogVerbose("ProcessCommandQueue: Device warming={IsWarmingUp} or cooling={IsCoolingDown}. Queue held.", IsWarmingUp, IsCoolingDown);
+					return;
+				}
+
 				try
 				{
-					string text = _commandQueue.Peek();
-
 					// Calculate time to wait based on minimum send interval
 					long currentTimeMs = Convert.ToInt64(DateTime.Now.ToUniversalTime().Subtract(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds);
 					long timeSinceLastSendMs = currentTimeMs - _lastSendTimeMs;
