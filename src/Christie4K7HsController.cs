@@ -292,20 +292,46 @@ namespace ChristieProjectorPlugin
 			{
 				case "PWR":
 				{
-					bool newPowerState = responseValue == 1;
-					PowerIsOn = newPowerState;
+					// responseValue: 0=OFF, 1=ON, 10=cooling, 11=warming
 					
-					// Clear warming/cooling flags when we get the actual power feedback
-					if (newPowerState && IsWarmingUp)
+					// Device is warming up
+					if (responseValue == 11)
 					{
-						IsWarmingUp = false; // Got power on feedback, clear warming
-						//this.LogVerbose("ProcessResponse: Received PWR!1 feedback, clearing IsWarmingUp");
+						IsWarmingUp = true;
+						this.LogVerbose("ProcessResponse: Device warming (PWR!11)");
 					}
-					else if (!newPowerState && IsCoolingDown)
+					// Device is cooling down
+					else if (responseValue == 10)
 					{
-						IsCoolingDown = false; // Got power off feedback, clear cooling
-						//this.LogVerbose("ProcessResponse: Received PWR!0 feedback, clearing IsCoolingDown");
+						IsCoolingDown = true;
+						this.LogVerbose("ProcessResponse: Device cooling (PWR!10)");
 					}
+					// Warmup CONFIRMED (PWR!01)
+					else if (responseValue == 1)
+					{
+						IsWarmingUp = false;
+						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
+						if (_pendingPowerOff)
+						{
+							_pendingPowerOff = false;
+							this.LogWarning("ProcessResponse: Executing pending PowerOff");
+							PowerOff();
+						}
+					}
+					// Cooldown CONFIRMED (PWR!00)
+					else if (responseValue == 0)
+					{
+						IsCoolingDown = false;
+						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
+						if (_pendingPowerOn)
+						{
+							_pendingPowerOn = false;
+							this.LogWarning("ProcessResponse: Executing pending PowerOn");
+							PowerOn();
+						}
+					}
+					
+					PowerIsOn = (responseValue == 1);
 					break;
 				}
 				case "ILI":
@@ -435,13 +461,6 @@ namespace ChristieProjectorPlugin
 			while (_commandQueue.Count > 0)
 			{
 				string text = _commandQueue.Peek();
-				
-				// Block control commands if warming or cooling
-				if (IsWarmingUp || IsCoolingDown)
-				{
-					this.LogVerbose("ProcessCommandQueue: Device warming={IsWarmingUp} or cooling={IsCoolingDown}. Queue held.", IsWarmingUp, IsCoolingDown);
-					return;
-				}
 
 				try
 				{
@@ -638,13 +657,20 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public override void PowerOn()
 		{
-			if (IsWarmingUp || IsCoolingDown) return;
+			// Skip if already warming up
+			if (IsWarmingUp) return;
+
+			// Queue power on if cooling down
+			if (IsCoolingDown)
+			{
+				_pendingPowerOn = true;
+				this.LogWarning("PowerOn: Queued (cooling down)");
+				return;
+			}
 
 			if (PowerIsOn == false) IsWarmingUp = true;
 
 			SendText("PWR", 1);
-
-			Thread.Sleep(1500);
 
 			PowerGet();
 
@@ -655,14 +681,20 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public override void PowerOff()
 		{
-			if (IsWarmingUp || IsCoolingDown) return;
+			// Skip if already cooling down
+			if (IsCoolingDown) return;
+
+			// Queue power off if warming up
+			if (IsWarmingUp)
+			{
+				_pendingPowerOff = true;
+				this.LogWarning("PowerOff: Queued (warming up)");
+				return;
+			}
 
 			if (PowerIsOn == true) IsCoolingDown = true;
 
 			SendText("PWR", 0);
-
-
-			Thread.Sleep(50);
 
 			PowerGet();
 
@@ -1056,6 +1088,13 @@ namespace ChristieProjectorPlugin
 		{
 			SendText("ILI", "?");
 		}
+
+		#endregion
+
+		#region Power State Management
+
+		private bool _pendingPowerOn;
+		private bool _pendingPowerOff;
 
 		#endregion
 
