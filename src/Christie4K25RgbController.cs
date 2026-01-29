@@ -70,8 +70,9 @@ namespace ChristieProjectorPlugin
 
 			VideoMuteIsOn = new BoolFeedback(() => _videoMuteState);
 
-			WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
-			CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
+		_pendingPowerOn = false;
+		_pendingPowerOff = false;
+
 
 			HasLamps = props.HasLamps;
 			HasScreen = props.HasScreen;
@@ -249,7 +250,7 @@ namespace ChristieProjectorPlugin
 		{
 			try
 			{
-				this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
+				//this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
 				_receiveQueue.Enqueue(new ProcessStringMessage(args.Text, ProcessResponse));
 			}
 			catch (Exception ex)
@@ -289,9 +290,7 @@ namespace ChristieProjectorPlugin
 
 				if (!response.Contains("!")) return;
 
-				this.LogVerbose("ProcessResponse: {response}", response);
-
-				var pattern = new Regex(@"\((?<command>[^!]+)!(?<value>\d+)(?: ""(?<data>.+?)"")?", RegexOptions.None);
+			this.LogVerbose("ProcessResponse: Raw response-'{response}'", response);
 				var match = pattern.Match(response);
 				responseType = match.Groups["command"].Value;
 				var responseString = match.Groups["value"].Value;
@@ -304,27 +303,52 @@ namespace ChristieProjectorPlugin
 				this.LogError(ex, "ProcessResponse exception");
 			}
 
-			this.LogVerbose("ProcessResponse: responseType-{responseType}, responseValue-{responseValue}", responseType, responseValue);
-			switch (responseType)
-			{
-				case "PWR":
+		switch (responseType)
+		{
+			case "PWR":
+				{
+					// responseValue: 0=OFF, 1=ON, 10=cooling, 11=warming
+					
+					// Device is warming up
+					if (responseValue == 11)
 					{
-						bool newPowerState = responseValue == 1;
-						PowerIsOn = newPowerState;
-						
-						// Clear warming/cooling flags when we get the actual power feedback
-						if (newPowerState && IsWarmingUp)
-						{
-							IsWarmingUp = false; // Got power on feedback, clear warming
-							this.LogVerbose("ProcessResponse: Received PWR!1 feedback, clearing IsWarmingUp");
-						}
-						else if (!newPowerState && IsCoolingDown)
-						{
-							IsCoolingDown = false; // Got power off feedback, clear cooling
-							this.LogVerbose("ProcessResponse: Received PWR!0 feedback, clearing IsCoolingDown");
-						}
-						break;
+						IsWarmingUp = true;
+						this.LogVerbose("ProcessResponse: Device warming (PWR!11)");
 					}
+					// Device is cooling down
+					else if (responseValue == 10)
+					{
+						IsCoolingDown = true;
+						this.LogVerbose("ProcessResponse: Device cooling (PWR!10)");
+					}
+					// Warmup CONFIRMED (PWR!01)
+					else if (responseValue == 1)
+					{
+						IsWarmingUp = false;
+						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
+						if (_pendingPowerOff)
+						{
+							_pendingPowerOff = false;
+							this.LogWarning("ProcessResponse: Executing pending PowerOff");
+							PowerOff();
+						}
+					}
+					// Cooldown CONFIRMED (PWR!00)
+					else if (responseValue == 0)
+					{
+						IsCoolingDown = false;
+						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
+						if (_pendingPowerOn)
+						{
+							_pendingPowerOn = false;
+							this.LogWarning("ProcessResponse: Executing pending PowerOn");
+							PowerOn();
+						}
+					}
+					
+					PowerIsOn = (responseValue == 1);
+					break;
+				}
 				case "SIN":
 					{
 						UpdateInputFb(responseValue);
@@ -338,7 +362,7 @@ namespace ChristieProjectorPlugin
 					}
 				default:
 					{
-						this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
+						//this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
 						break;
 					}
 			}
@@ -419,12 +443,16 @@ namespace ChristieProjectorPlugin
 						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
 					}
 				}
-				else if (text.Contains("(PWR!0)"))
+if (text.Contains("(PWR!0)"))
+			{
+				if (!IsCoolingDown)
 				{
-					if (!IsCoolingDown)
-					{
-						IsCoolingDown = true;
-						this.LogVerbose("SendCommandQueued: Power OFF command queued, setting IsCoolingDown=true. Cooling time: {CooldownTimeMs}ms", CooldownTime);
+					IsCoolingDown = true;
+					this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
+				}
+				else
+				{
+					this.LogWarning("SendCommandQueued: Power OFF command but IsCoolingDown already true!");
 					}
 				}
 
@@ -447,13 +475,6 @@ namespace ChristieProjectorPlugin
 			while (_commandQueue.Count > 0)
 			{
 				string text = _commandQueue.Peek();
-				
-				// Block control commands if warming or cooling
-				if (IsWarmingUp || IsCoolingDown)
-				{
-					this.LogVerbose("ProcessCommandQueue: Device warming={IsWarmingUp} or cooling={IsCoolingDown}. Queue held.", IsWarmingUp, IsCoolingDown);
-					return;
-				}
 
 				try
 				{
@@ -523,12 +544,10 @@ namespace ChristieProjectorPlugin
 
 			if (!PowerIsOn) return;
 
-			CrestronEnvironment.Sleep(2000);
 			InputGet();
 
 			if (!HasLamps) return;
 
-			CrestronEnvironment.Sleep(2000);
 			LampGet();
 		}
 
@@ -650,13 +669,22 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public override void PowerOn()
 		{
-			if (IsWarmingUp || IsCoolingDown) return;
+			this.LogWarning("PowerOn called: IsWarmingUp={IsWarmingUp}, IsCoolingDown={IsCoolingDown}, PowerIsOn={PowerIsOn}", IsWarmingUp, IsCoolingDown, PowerIsOn);
+			
+			// Don't send duplicate power on if already warming
+			if (IsWarmingUp) return;
+
+			// Queue pending power on if cooling down, execute normally if not cooling
+			if (IsCoolingDown)
+			{
+				_pendingPowerOn = true;
+				this.LogWarning("PowerOn queued (cooling down)");
+				return;
+			}
 
 			if (PowerIsOn == false) IsWarmingUp = true;
 
 			SendText("PWR", 1);
-
-			Thread.Sleep(1500);
 
 			PowerGet();
 
@@ -667,14 +695,22 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public override void PowerOff()
 		{
-			if (IsWarmingUp || IsCoolingDown) return;
+			this.LogWarning("PowerOff called: PowerIsOn={PowerIsOn}, IsWarmingUp={IsWarmingUp}, IsCoolingDown={IsCoolingDown}", PowerIsOn, IsWarmingUp, IsCoolingDown);
+
+			// Don't send duplicate power off if already cooling
+			if (IsCoolingDown) return;
+
+			// Queue pending power off if warming up, execute normally if not warming
+			if (IsWarmingUp)
+			{
+				_pendingPowerOff = true;
+				this.LogWarning("PowerOff queued (warming up)");
+				return;
+			}
 
 			if (PowerIsOn == true) IsCoolingDown = true;
 
 			SendText("PWR", 0);
-
-
-			Thread.Sleep(50);
 
 			PowerGet();
 
@@ -907,7 +943,6 @@ namespace ChristieProjectorPlugin
 		public void InputHdmi1()
 		{
 			SendText("SIN", 1);
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -917,7 +952,6 @@ namespace ChristieProjectorPlugin
 		public void InputHdmi2()
 		{
 			SendText("SIN", 2);
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -927,7 +961,6 @@ namespace ChristieProjectorPlugin
 		public void InputHdbaseT()
 		{
 			SendText("SIN", 3);
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -938,7 +971,6 @@ namespace ChristieProjectorPlugin
 		public void InputDisplayPort1()
 		{
 			SendText("SIN", 4);
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -948,7 +980,6 @@ namespace ChristieProjectorPlugin
 		public void InputDisplayPort2()
 		{
 			SendText("SIN", 5);
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -958,8 +989,6 @@ namespace ChristieProjectorPlugin
 		public void InputSdi1()
 		{
 			SendText("SIN", 6);
-
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -969,8 +998,6 @@ namespace ChristieProjectorPlugin
 		public void InputSdi2()
 		{
 			SendText("SIN", 7);
-
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -980,8 +1007,6 @@ namespace ChristieProjectorPlugin
 		public void InputSdi3()
 		{
 			SendText("SIN", 8);
-
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -991,8 +1016,6 @@ namespace ChristieProjectorPlugin
 		public void InputSdi4()
 		{
 			SendText("SIN", 9);
-
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -1003,8 +1026,6 @@ namespace ChristieProjectorPlugin
 		public void InputDigitalLink1()
 		{
 			SendText("SIN", 10);
-
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -1015,8 +1036,6 @@ namespace ChristieProjectorPlugin
 		public void InputDigitalLink2()
 		{
 			SendText("SIN", 11);
-
-			Thread.Sleep(2000);
 			InputGet();
 		}
 
@@ -1159,6 +1178,20 @@ namespace ChristieProjectorPlugin
 
 
 
+		#region Power State Flags
+
+		private bool _pendingPowerOn;
+		private bool _pendingPowerOff;
+
+		#endregion
+
+		#region Power State Management
+
+		private bool _pendingPowerOn;
+		private bool _pendingPowerOff;
+
+		#endregion
+
 		#region videoMute
 
 		private bool _videoMuteState;
@@ -1184,7 +1217,6 @@ namespace ChristieProjectorPlugin
 		{
 			SendText("SHU", 1);
 
-			Thread.Sleep(25);
 			VideoMuteGet();
 
 		}
@@ -1196,7 +1228,6 @@ namespace ChristieProjectorPlugin
 		{
 			SendText("SHU", 0);
 
-			Thread.Sleep(25);
 			VideoMuteGet();
 		}
 
