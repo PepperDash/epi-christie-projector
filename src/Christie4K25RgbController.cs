@@ -446,13 +446,13 @@ namespace ChristieProjectorPlugin
 						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
 					}
 				}
-			}
-			else if (text.Contains("(PWR!0)"))
-			{
-				if (!IsCoolingDown)
+				else if (text.Contains("(PWR!0)"))
 				{
-					IsCoolingDown = true;
-					this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
+					if (!IsCoolingDown)
+					{
+						IsCoolingDown = true;
+						this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
+					}
 				}
 
 				// Queue the command
@@ -1174,6 +1174,9 @@ namespace ChristieProjectorPlugin
 
 
 		#region Power State Management
+
+		private bool _pendingPowerOn;
+		private bool _pendingPowerOff;
 
 		#endregion
 
