@@ -580,6 +580,13 @@ namespace ChristieProjectorPlugin
 
 				if (_isWarmingUp)
 				{
+					// Dispose existing timer to prevent resource leak
+					if (WarmupTimer != null)
+					{
+						WarmupTimer.Stop();
+						WarmupTimer.Dispose();
+					}
+					
 					WarmupTimer = new CTimer(t =>
 					{
 						_isWarmingUp = false;
@@ -615,6 +622,13 @@ namespace ChristieProjectorPlugin
 
 				if (_isCoolingDown)
 				{
+					// Dispose existing timer to prevent resource leak
+					if (CooldownTimer != null)
+					{
+						CooldownTimer.Stop();
+						CooldownTimer.Dispose();
+					}
+					
 					CooldownTimer = new CTimer(t =>
 					{
 						_isCoolingDown = false;
