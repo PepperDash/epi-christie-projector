@@ -578,31 +578,39 @@ namespace ChristieProjectorPlugin
 				_isWarmingUp = value;
 				IsWarmingUpFeedback.FireUpdate();
 
-				if (_isWarmingUp)
+				lock (_sendLock)
 				{
-					// Dispose existing timer to prevent resource leak
-					if (WarmupTimer != null)
+					if (_isWarmingUp)
 					{
-						WarmupTimer.Stop();
-						WarmupTimer.Dispose();
-					}
-					
-					WarmupTimer = new CTimer(t =>
-					{
-						_isWarmingUp = false;
-						IsWarmingUpFeedback.FireUpdate();
-						// Process any queued commands now that warmup is complete
-						lock (_sendLock)
+						// Dispose existing timer to prevent resource leak
+						if (WarmupTimer != null)
 						{
-							ProcessCommandQueue();
+							WarmupTimer.Stop();
+							WarmupTimer.Dispose();
 						}
-					}, WarmupTime);
-				}
-				else
-				{
-					// Warmup completed, process queued commands
-					lock (_sendLock)
+						
+						WarmupTimer = new CTimer(t =>
+						{
+							_isWarmingUp = false;
+							IsWarmingUpFeedback.FireUpdate();
+							// Process any queued commands now that warmup is complete
+							lock (_sendLock)
+							{
+								ProcessCommandQueue();
+							}
+						}, WarmupTime);
+					}
+					else
 					{
+						// Warmup cancelled or completed, stop and dispose timer
+						if (WarmupTimer != null)
+						{
+							WarmupTimer.Stop();
+							WarmupTimer.Dispose();
+							WarmupTimer = null;
+						}
+						
+						// Process queued commands
 						ProcessCommandQueue();
 					}
 				}
@@ -620,31 +628,39 @@ namespace ChristieProjectorPlugin
 				_isCoolingDown = value;
 				IsCoolingDownFeedback.FireUpdate();
 
-				if (_isCoolingDown)
+				lock (_sendLock)
 				{
-					// Dispose existing timer to prevent resource leak
-					if (CooldownTimer != null)
+					if (_isCoolingDown)
 					{
-						CooldownTimer.Stop();
-						CooldownTimer.Dispose();
-					}
-					
-					CooldownTimer = new CTimer(t =>
-					{
-						_isCoolingDown = false;
-						IsCoolingDownFeedback.FireUpdate();
-						// Process any queued commands now that cooldown is complete
-						lock (_sendLock)
+						// Dispose existing timer to prevent resource leak
+						if (CooldownTimer != null)
 						{
-							ProcessCommandQueue();
+							CooldownTimer.Stop();
+							CooldownTimer.Dispose();
 						}
-					}, CooldownTime);
-				}
-				else
-				{
-					// Cooldown completed, process queued commands
-					lock (_sendLock)
+						
+						CooldownTimer = new CTimer(t =>
+						{
+							_isCoolingDown = false;
+							IsCoolingDownFeedback.FireUpdate();
+							// Process any queued commands now that cooldown is complete
+							lock (_sendLock)
+							{
+								ProcessCommandQueue();
+							}
+						}, CooldownTime);
+					}
+					else
 					{
+						// Cooldown cancelled or completed, stop and dispose timer
+						if (CooldownTimer != null)
+						{
+							CooldownTimer.Stop();
+							CooldownTimer.Dispose();
+							CooldownTimer = null;
+						}
+						
+						// Process queued commands
 						ProcessCommandQueue();
 					}
 				}
