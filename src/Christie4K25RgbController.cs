@@ -464,7 +464,7 @@ namespace ChristieProjectorPlugin
 			}
 		}
 
-		/// <summary>
+		/// <summary> ///
 		/// Processes the command queue, sending commands only when device is ready.
 		/// Only control commands are in queue; queries are sent immediately bypassing queue.
 		/// Commands are held if device is warming or cooling.
