@@ -29,6 +29,8 @@ namespace ChristieProjectorPlugin
 		private bool HasScreen { get; set; }
 		private bool HasLift { get; set; }
 
+		private static readonly Regex pattern = new Regex(@"\((?<command>[A-Z]+)!(?<value>\d+)\s*(?<data>.*?)\)", RegexOptions.Compiled);
+
 		public ISelectableItems<string> Inputs { get; private set; }
 
 		/// <summary>
@@ -292,7 +294,6 @@ namespace ChristieProjectorPlugin
 
 				if (!response.Contains("!")) return;
 
-			var pattern = new Regex(@"\((?<command>[^!]+)!(?<value>\d+)(?: ""(?<data>.+?)"")?", RegexOptions.None);
 			this.LogVerbose("ProcessResponse: Raw response-'{response}'", response);
 			var match = pattern.Match(response);
 				responseType = match.Groups["command"].Value;
@@ -327,27 +328,33 @@ namespace ChristieProjectorPlugin
 					// Warmup CONFIRMED (PWR!01)
 					else if (responseValue == 1)
 					{
-						IsWarmingUp = false;
-						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
-						if (_pendingPowerOff)
-						{
-							_pendingPowerOff = false;
-							this.LogWarning("ProcessResponse: Executing pending PowerOff");
-							PowerOff();
-						}
-					}
-					// Cooldown CONFIRMED (PWR!00)
-					else if (responseValue == 0)
+					if (IsWarmingUp)
 					{
-						IsCoolingDown = false;
-						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
-						if (_pendingPowerOn)
-						{
-							_pendingPowerOn = false;
-							this.LogWarning("ProcessResponse: Executing pending PowerOn");
-							PowerOn();
-						}
+						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
 					}
+					IsWarmingUp = false;
+					if (_pendingPowerOff)
+					{
+						_pendingPowerOff = false;
+						this.LogWarning("ProcessResponse: Executing pending PowerOff");
+						PowerOff();
+					}
+				}
+				// Cooldown CONFIRMED (PWR!00)
+				else if (responseValue == 0)
+				{
+					if (IsCoolingDown)
+					{
+						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
+					}
+					IsCoolingDown = false;
+					if (_pendingPowerOn)
+					{
+						_pendingPowerOn = false;
+						this.LogWarning("ProcessResponse: Executing pending PowerOn");
+						PowerOn();
+					}
+				}
 					
 					PowerIsOn = (responseValue == 1);
 					break;
@@ -591,6 +598,13 @@ namespace ChristieProjectorPlugin
 
 				if (_isWarmingUp)
 				{
+					// Dispose existing timer before creating new one to prevent resource leaks
+					if (WarmupTimer != null)
+					{
+						WarmupTimer.Stop();
+						WarmupTimer.Dispose();
+					}
+
 					WarmupTimer = new CTimer(t =>
 					{
 						_isWarmingUp = false;
@@ -604,7 +618,14 @@ namespace ChristieProjectorPlugin
 				}
 				else
 				{
-					// Warmup completed, process queued commands
+					// Warmup completed, dispose timer and process queued commands
+					if (WarmupTimer != null)
+					{
+						WarmupTimer.Stop();
+						WarmupTimer.Dispose();
+						WarmupTimer = null;
+					}
+
 					lock (_sendLock)
 					{
 						ProcessCommandQueue();
@@ -626,6 +647,13 @@ namespace ChristieProjectorPlugin
 
 				if (_isCoolingDown)
 				{
+					// Dispose existing timer before creating new one to prevent resource leaks
+					if (CooldownTimer != null)
+					{
+						CooldownTimer.Stop();
+						CooldownTimer.Dispose();
+					}
+
 					CooldownTimer = new CTimer(t =>
 					{
 						_isCoolingDown = false;
@@ -639,7 +667,14 @@ namespace ChristieProjectorPlugin
 				}
 				else
 				{
-					// Cooldown completed, process queued commands
+					// Cooldown completed, dispose timer and process queued commands
+					if (CooldownTimer != null)
+					{
+						CooldownTimer.Stop();
+						CooldownTimer.Dispose();
+						CooldownTimer = null;
+					}
+
 					lock (_sendLock)
 					{
 						ProcessCommandQueue();
@@ -683,9 +718,10 @@ namespace ChristieProjectorPlugin
 
 		if (!PowerIsOn) IsWarmingUp = true;
 
-			PowerGet();
+		SendText("PWR", 1);
 
-		}
+		PowerGet();
+	}
 
 		/// <summary>
 		/// Powers off the projector and initiates the cooling sequence
@@ -707,9 +743,11 @@ namespace ChristieProjectorPlugin
 
 		if (PowerIsOn) IsCoolingDown = true;
 
-			PowerGet();
+		SendText("PWR", 0);
 
-		}
+		PowerGet();
+
+	}
 
 		/// <summary>
 		/// Polls the projector for current power status

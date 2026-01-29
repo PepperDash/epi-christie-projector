@@ -309,27 +309,33 @@ namespace ChristieProjectorPlugin
 					// Warmup CONFIRMED (PWR!01)
 					else if (responseValue == 1)
 					{
-						IsWarmingUp = false;
-						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
-						if (_pendingPowerOff)
-						{
-							_pendingPowerOff = false;
-							this.LogWarning("ProcessResponse: Executing pending PowerOff");
-							PowerOff();
-						}
-					}
-					// Cooldown CONFIRMED (PWR!00)
-					else if (responseValue == 0)
+					if (IsWarmingUp)
 					{
-						IsCoolingDown = false;
-						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
-						if (_pendingPowerOn)
-						{
-							_pendingPowerOn = false;
-							this.LogWarning("ProcessResponse: Executing pending PowerOn");
-							PowerOn();
-						}
+						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
 					}
+					IsWarmingUp = false;
+					if (_pendingPowerOff)
+					{
+						_pendingPowerOff = false;
+						this.LogWarning("ProcessResponse: Executing pending PowerOff");
+						PowerOff();
+					}
+				}
+				// Cooldown CONFIRMED (PWR!00)
+				else if (responseValue == 0)
+				{
+					if (IsCoolingDown)
+					{
+						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
+					}
+					IsCoolingDown = false;
+					if (_pendingPowerOn)
+					{
+						_pendingPowerOn = false;
+						this.LogWarning("ProcessResponse: Executing pending PowerOn");
+						PowerOn();
+					}
+				}
 					
 					PowerIsOn = (responseValue == 1);
 					break;
