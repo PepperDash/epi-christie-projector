@@ -534,7 +534,7 @@ When device reaches confirmed state:
 **Timing Configuration:**
 
 - **Warming Time:** Must be ≥ 30000 ms to allow device full warm-up cycle
-- **Cooling Time:** Must be ≥ 25000 ms to allow device full cool-down cycle
+- **Cooling Time:** Must be ≥ 30000 ms to allow device full cool-down cycle
 - **Poll Interval:** Minimum 10000 ms; higher intervals reduce network traffic but increase feedback latency
 - **Never modify minimum values** - they are enforced by device firmware and safety requirements
 
@@ -543,7 +543,7 @@ When device reaches confirmed state:
 - [ ] Device IP address is static (for TCP) or COM port is correct (for serial)
 - [ ] Device is powered on and accessible before starting Essentials
 - [ ] Configuration UIDs are unique across all devices
-- [ ] Warming and cooling times set to minimum 25000 ms
+- [ ] Warming and cooling times set to minimum 30000 ms
 - [ ] Poll interval configured (default 10000 ms is recommended)
 - [ ] Test power on: Should see PWR!11 (warming), then PWR!01 (on)
 - [ ] Test power off: Should see PWR!10 (cooling), then PWR!00 (off)
@@ -554,7 +554,7 @@ When device reaches confirmed state:
 
 **Common Pitfalls to Avoid:**
 
-- ❌ Setting warm/cool times below 25000 ms (will be forced up by plugin)
+- ❌ Setting warm/cool times below 30000 ms (will be forced up by plugin)
 - ❌ Using dynamic IP addresses for TCP connections (must be static)
 - ❌ Duplicate UIDs across devices (causes device identification conflicts)
 - ❌ Sending power commands more frequently than 100 ms (queue throttling prevents damage)

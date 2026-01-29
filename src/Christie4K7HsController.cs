@@ -82,7 +82,7 @@ namespace ChristieProjectorPlugin
 		}
 
 
-		/// <summary> ///
+		/// <summary>
 		/// Initializes the device by establishing communication connection and starting the communication monitor
 		/// </summary>
 		public override void Initialize()
@@ -423,23 +423,17 @@ namespace ChristieProjectorPlugin
 			lock (_sendLock)
 			{
 				// Check if this is a power control command (not a query)
-				// PWR!1 = power on -> expect warming
-				// PWR!0 = power off -> expect cooling
-				if (text.Contains("(PWR!1)"))
+				// PWR1 = power on command -> expect warming
+				// PWR0 = power off command -> expect cooling
+				if (text.Contains("(PWR1)") && !IsWarmingUp)
 				{
-					if (!IsWarmingUp)
-					{
-						IsWarmingUp = true;
-						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
-					}
+					IsWarmingUp = true;
+					this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
 				}
-				else if (text.Contains("(PWR!0)"))
+				else if (text.Contains("(PWR0)") && !IsCoolingDown)
 				{
-					if (!IsCoolingDown)
-					{
-						IsCoolingDown = true;
-						this.LogVerbose("SendCommandQueued: Power OFF command queued, setting IsCoolingDown=true. Cooling time: {CooldownTimeMs}ms", CooldownTime);
-					}
+					IsCoolingDown = true;
+					this.LogVerbose("SendCommandQueued: Power OFF command queued, setting IsCoolingDown=true. Cooling time: {CooldownTimeMs}ms", CooldownTime);
 				}
 
 				// Queue the command
@@ -472,7 +466,9 @@ namespace ChristieProjectorPlugin
 					{
 						long delayMs = MinSendIntervalMs - timeSinceLastSendMs;
 						this.LogVerbose("ProcessCommandQueue: Throttling for {delayMs}ms", delayMs);
-						Thread.Sleep((int)delayMs);
+						// Schedule the next processing after the required delay instead of blocking the thread
+						new CTimer(_ => ProcessCommandQueue(), (int)delayMs);
+						break;
 					}
 
 					// Send the command

@@ -70,13 +70,13 @@ namespace ChristieProjectorPlugin
 
 			VideoMuteIsOn = new BoolFeedback(() => _videoMuteState);
 
-		WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
-		CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
+			WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
+			CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
 
-		_pendingPowerOn = false;
-		_pendingPowerOff = false;
+			_pendingPowerOn = false;
+			_pendingPowerOff = false;
 
-		HasLamps = props.HasLamps;
+			HasLamps = props.HasLamps;
 			HasScreen = props.HasScreen;
 			HasLift = props.HasLift;
 
@@ -436,23 +436,17 @@ namespace ChristieProjectorPlugin
 			lock (_sendLock)
 			{
 				// Check if this is a power control command (not a query)
-				// PWR!1 = power on -> expect warming
-				// PWR!0 = power off -> expect cooling
-				if (text.Contains("(PWR!1)"))
+				// PWR1 = power on command -> expect warming
+				// PWR0 = power off command -> expect cooling
+				if (text.Contains("(PWR1)") && !IsWarmingUp)
 				{
-					if (!IsWarmingUp)
-					{
-						IsWarmingUp = true;
-						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
-					}
+					IsWarmingUp = true;
+					this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
 				}
-				else if (text.Contains("(PWR!0)"))
+				else if (text.Contains("(PWR0)") && !IsCoolingDown)
 				{
-					if (!IsCoolingDown)
-					{
-						IsCoolingDown = true;
-						this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
-					}
+					IsCoolingDown = true;
+					this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
 				}
 
 				// Queue the command
@@ -464,7 +458,7 @@ namespace ChristieProjectorPlugin
 			}
 		}
 
-		/// <summary> ///
+		/// <summary>
 		/// Processes the command queue, sending commands only when device is ready.
 		/// Only control commands are in queue; queries are sent immediately bypassing queue.
 		/// Commands are held if device is warming or cooling.
@@ -485,7 +479,9 @@ namespace ChristieProjectorPlugin
 					{
 						long delayMs = MinSendIntervalMs - timeSinceLastSendMs;
 						this.LogVerbose("ProcessCommandQueue: Throttling for {delayMs}ms", delayMs);
-						Thread.Sleep((int)delayMs);
+						// Schedule the next processing after the required delay instead of blocking the thread
+						new CTimer(_ => ProcessCommandQueue(), (int)delayMs);
+						break;
 					}
 
 					// Send the command
@@ -681,9 +677,11 @@ namespace ChristieProjectorPlugin
 				return;
 			}
 
-		if (!PowerIsOn) IsWarmingUp = true;
+			if (!PowerIsOn) IsWarmingUp = true;
 
-			PowerGet();
+		SendText("PWR", 1);
+
+		PowerGet();
 
 		}
 
@@ -705,9 +703,11 @@ namespace ChristieProjectorPlugin
 				return;
 			}
 
-		if (PowerIsOn) IsCoolingDown = true;
+			if (PowerIsOn) IsCoolingDown = true;
 
-			PowerGet();
+		SendText("PWR", 0);
+
+		PowerGet();
 
 		}
 
