@@ -1175,9 +1175,6 @@ namespace ChristieProjectorPlugin
 
 		#region Power State Management
 
-		private bool _pendingPowerOn;
-		private bool _pendingPowerOff;
-
 		#endregion
 
 		#region videoMute
