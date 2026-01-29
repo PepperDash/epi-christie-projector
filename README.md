@@ -24,7 +24,7 @@ The Christie projector plugin uses device feedback responses to manage power sta
 - **PWR!11** = Warming Up (transition state - device is actively warming)
 
 **Safety Features:**
-- Minimum 25-second warm-up and cool-down periods are enforced (configurable, cannot be reduced below 25 seconds)
+- Minimum 30-second warm-up and cool-down periods are enforced (configurable, cannot be reduced below 30 seconds)
 - Power commands sent during opposite state transitions are automatically queued and executed after the current transition completes
 - Do NOT attempt to power on while device is warming, or power off while cooling - the plugin handles this automatically
 - Device responses drive all state flags, not timers alone. Timers serve as safety fallbacks only.
@@ -74,8 +74,8 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
       }
     },
     "pollIntervalMs": 10000,
-    "warmingTimeMs": 25000,
-    "coolingTimeMs": 25000,
+    "warmingTimeMs": 30000,
+    "coolingTimeMs": 30000,
     "hasLamps": true,
     "hasScreen": false,
     "hasLift": false
@@ -108,8 +108,8 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
       }
     },
     "pollIntervalMs": 10000,
-    "warmingTimeMs": 25000,
-    "coolingTimeMs": 25000,
+    "warmingTimeMs": 30000,
+    "coolingTimeMs": 30000,
     "hasLamps": true,
     "hasScreen": false,
     "hasLift": false
@@ -141,8 +141,8 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
         }
       },
       "pollIntervalMs": 10000,
-      "warmingTimeMs": 25000,
-      "coolingTimeMs": 25000,
+      "warmingTimeMs": 30000,
+      "coolingTimeMs": 30000,
       "hasLamps": true,
       "hasScreen": false,
       "hasLift": false
@@ -169,8 +169,8 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
         }
       },
       "pollIntervalMs": 10000,
-      "warmingTimeMs": 25000,
-      "coolingTimeMs": 25000,
+      "warmingTimeMs": 30000,
+      "coolingTimeMs": 30000,
       "hasLamps": true,
       "hasScreen": false,
       "hasLift": false
@@ -189,7 +189,7 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
 
 | Feature | 4K7-HS | 4K25-RGB | Notes |
 |---------|--------|----------|-------|
-| Power On/Off | ✓ | ✓ | Managed with 25-second warm-up/cool-down |
+| Power On/Off | ✓ | ✓ | Managed with 30-second warm-up/cool-down |
 | Input Selection | ✓ | ✓ | HDMI, DigitalLink, and other inputs |
 | Video Mute | ✓ | ✓ | Blanks display output (SHU command) |
 | Power States | ✓ | ✓ | OFF, Warming, Fully On, Cooling |
@@ -214,8 +214,8 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
 | `group` | string | ✓ | - | Device grouping (e.g., `"displays"`, `"projectors"`) |
 | `control` | object | ✓ | - | Communication control configuration (TCP or Serial) |
 | `pollIntervalMs` | long | ✗ | 10000 | Status poll interval in milliseconds (minimum 10000) |
-| `warmingTimeMs` | long | ✗ | 25000 | Device warm-up period in milliseconds (minimum 25000) |
-| `coolingTimeMs` | long | ✗ | 25000 | Device cool-down period in milliseconds (minimum 25000) |
+| `warmingTimeMs` | long | ✗ | 30000 | Device warm-up period in milliseconds (minimum 30000) |
+| `coolingTimeMs` | long | ✗ | 30000 | Device cool-down period in milliseconds (minimum 30000) |
 | `hasLamps` | bool | ✗ | false | Device has lamp indicator for feedback purposes |
 | `hasScreen` | bool | ✗ | false | Device has screen for feedback purposes |
 | `hasLift` | bool | ✗ | false | Device has motorized lift for feedback purposes |
@@ -272,18 +272,18 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
   - Values below 10000 ms will be forced to 10000 ms by the plugin
 
 - **`warmingTimeMs`:** Duration (in milliseconds) to wait for device to complete power-on warm-up cycle.
-  - **Minimum enforced:** 25000 ms (25 seconds)
-  - **Must match actual device warm-up time:** Real Christie projectors require ~25 seconds to fully warm up
-  - **Recommended:** 25000 ms (do not increase unless device specifically requires longer)
+  - **Minimum enforced:** 30000 ms (30 seconds)
+  - **Must match actual device warm-up time:** Real Christie projectors require ~30 seconds to fully warm up
+  - **Recommended:** 30000 ms (do not increase unless device specifically requires longer)
   - **Safety:** Commands cannot be sent to device during warm-up period
-  - Values below 25000 ms will be forced to 25000 ms by the plugin
+  - Values below 30000 ms will be forced to 30000 ms by the plugin
 
 - **`coolingTimeMs`:** Duration (in milliseconds) to wait for device to complete power-off cool-down cycle.
-  - **Minimum enforced:** 25000 ms (25 seconds)
-  - **Must match actual device cool-down time:** Real Christie projectors require ~25 seconds to fully cool down
-  - **Recommended:** 25000 ms (do not increase unless device specifically requires longer)
+  - **Minimum enforced:** 30000 ms (30 seconds)
+  - **Must match actual device cool-down time:** Real Christie projectors require ~30 seconds to fully cool down
+  - **Recommended:** 30000 ms (do not increase unless device specifically requires longer)
   - **Safety:** Commands cannot be sent to device during cool-down period
-  - Values below 25000 ms will be forced to 25000 ms by the plugin
+  - Values below 30000 ms will be forced to 30000 ms by the plugin
 
 **Device Capabilities:**
 
@@ -533,7 +533,7 @@ When device reaches confirmed state:
 
 **Timing Configuration:**
 
-- **Warming Time:** Must be ≥ 25000 ms to allow device full warm-up cycle
+- **Warming Time:** Must be ≥ 30000 ms to allow device full warm-up cycle
 - **Cooling Time:** Must be ≥ 25000 ms to allow device full cool-down cycle
 - **Poll Interval:** Minimum 10000 ms; higher intervals reduce network traffic but increase feedback latency
 - **Never modify minimum values** - they are enforced by device firmware and safety requirements

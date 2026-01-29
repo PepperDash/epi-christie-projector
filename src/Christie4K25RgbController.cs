@@ -70,11 +70,13 @@ namespace ChristieProjectorPlugin
 
 			VideoMuteIsOn = new BoolFeedback(() => _videoMuteState);
 
+		WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
+		CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
+
 		_pendingPowerOn = false;
 		_pendingPowerOff = false;
 
-
-			HasLamps = props.HasLamps;
+		HasLamps = props.HasLamps;
 			HasScreen = props.HasScreen;
 			HasLift = props.HasLift;
 
@@ -290,8 +292,9 @@ namespace ChristieProjectorPlugin
 
 				if (!response.Contains("!")) return;
 
+			var pattern = new Regex(@"\((?<command>[^!]+)!(?<value>\d+)(?: ""(?<data>.+?)"")?", RegexOptions.None);
 			this.LogVerbose("ProcessResponse: Raw response-'{response}'", response);
-				var match = pattern.Match(response);
+			var match = pattern.Match(response);
 				responseType = match.Groups["command"].Value;
 				var responseString = match.Groups["value"].Value;
 				string responseData = match.Groups["data"].Value;
@@ -443,17 +446,13 @@ namespace ChristieProjectorPlugin
 						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
 					}
 				}
-if (text.Contains("(PWR!0)"))
+			}
+			else if (text.Contains("(PWR!0)"))
 			{
 				if (!IsCoolingDown)
 				{
 					IsCoolingDown = true;
 					this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
-				}
-				else
-				{
-					this.LogWarning("SendCommandQueued: Power OFF command but IsCoolingDown already true!");
-					}
 				}
 
 				// Queue the command
@@ -682,9 +681,7 @@ if (text.Contains("(PWR!0)"))
 				return;
 			}
 
-			if (PowerIsOn == false) IsWarmingUp = true;
-
-			SendText("PWR", 1);
+		if (!PowerIsOn) IsWarmingUp = true;
 
 			PowerGet();
 
@@ -708,9 +705,7 @@ if (text.Contains("(PWR!0)"))
 				return;
 			}
 
-			if (PowerIsOn == true) IsCoolingDown = true;
-
-			SendText("PWR", 0);
+		if (PowerIsOn) IsCoolingDown = true;
 
 			PowerGet();
 
@@ -1177,13 +1172,6 @@ if (text.Contains("(PWR!0)"))
 
 
 
-
-		#region Power State Flags
-
-		private bool _pendingPowerOn;
-		private bool _pendingPowerOff;
-
-		#endregion
 
 		#region Power State Management
 
