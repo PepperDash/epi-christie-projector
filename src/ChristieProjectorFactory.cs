@@ -14,7 +14,7 @@ namespace ChristieProjectorPlugin
         /// </summary>
         public ChristieProjectorFactory()
         {
-            TypeNames = new List<string> { "ChristieProjector", "Christie4k7hsProjector", "Christie4k25rgbProjector" };
+            TypeNames = new List<string> { "ChristieProjector", "Christie4k7hsProjector", "Christie4k25rgbProjector", "Christie4k35rgbProjector" };
 
             MinimumEssentialsFrameworkVersion = "2.5.1";
         }
@@ -42,6 +42,8 @@ namespace ChristieProjectorPlugin
                     return new Christie4K7HsController(dc.Key, dc.Name, config, comms);
                 case "christie4k25rgbprojector":
                     return new Christie4K25RgbController(dc.Key, dc.Name, config, comms);
+                case "christie4k35rgbprojector":
+                    return new Christie4K35RgbController(dc.Key, dc.Name, config, comms);
                 default:
                     return new Christie4K7HsController(dc.Key, dc.Name, config, comms); ;
             }
