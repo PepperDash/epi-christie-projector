@@ -733,11 +733,11 @@ namespace ChristieProjectorPlugin
 							eRoutingPortConnectionType.Sdi, new Action(InputSdi4), this), 11);
 
 			AddRoutingInputPort(
-					new RoutingInputPort(RoutingPortNames.VgaIn, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+					new RoutingInputPort(RoutingPortNames.VgaIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
 							eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink1), this), 12);
 
 			AddRoutingInputPort(
-					new RoutingInputPort(RoutingPortNames.RgbIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
+					new RoutingInputPort(RoutingPortNames.VgaIn, eRoutingSignalType.Audio | eRoutingSignalType.Video,
 							eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink2), this), 13);
 
 
@@ -970,6 +970,12 @@ namespace ChristieProjectorPlugin
 					break;
 				case RoutingPortNames.DisplayPortIn2:
 					CurrentInputNumber = 7;
+					break;
+				case RoutingPortNames.DisplayPortIn3:
+					CurrentInputNumber = 4;
+					break;
+				case RoutingPortNames.DisplayPortIn:
+					CurrentInputNumber = 5;
 					break;
 				case RoutingPortNames.SdiIn:
 					CurrentInputNumber = 8;
