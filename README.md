@@ -460,7 +460,7 @@ ProcessResponse() receives value
     ├─ PWR!01 (ON confirmed): Clear IsWarmingUp, execute pending PowerOff if queued
     └─ PWR!00 (OFF confirmed): Clear IsCoolingDown, execute pending PowerOn if queued
          ↓
-Timers act as safety fallback (25s expiry)
+Timers act as safety fallback, using the configured WarmupTime/CooldownTime (minimum 30s)
 ```
 
 **Command Queuing:**
