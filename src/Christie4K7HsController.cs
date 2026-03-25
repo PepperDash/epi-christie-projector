@@ -22,7 +22,7 @@ namespace ChristieProjectorPlugin
 	/// input routing, power management, and video mute functionality
 	/// </summary>
 	public class Christie4K7HsController : TwoWayDisplayBase, ICommunicationMonitor, IBridgeAdvanced,
-		IHasInputs<string>, IRoutingSinkWithSwitchingWithInputPort
+		IHasInputs<string>, IRoutingSinkWithSwitchingWithInputPort, IBasicVideoMuteWithFeedback
 	{
 
 		private bool _isSerialComm;
@@ -61,7 +61,7 @@ namespace ChristieProjectorPlugin
 
 			_isSerialComm = !(Communication is ISocketStatus socket);
 
-			var pollIntervalMs = props.PollIntervalMs > 45000 ? props.PollIntervalMs : 45000;
+			var pollIntervalMs = props.PollIntervalMs >= 10000 ? props.PollIntervalMs : 10000;
 			CommunicationMonitor = new GenericCommunicationMonitor(this, Communication, pollIntervalMs, 180000, 300000,
 				StatusGet);
 
@@ -69,7 +69,7 @@ namespace ChristieProjectorPlugin
 
 			DeviceManager.AddDevice(CommunicationMonitor);
 
-			VideoMuteIsOnFeedback = new BoolFeedback(() => VideoMuteIsOn);
+			VideoMuteIsOn = new BoolFeedback(() => _videoMuteState);
 
 			WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
 			CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
@@ -178,8 +178,8 @@ namespace ChristieProjectorPlugin
 			trilist.SetSigTrueAction(joinMap.VideoMuteOn.JoinNumber, VideoMuteOn);
 			trilist.SetSigTrueAction(joinMap.VideoMuteOff.JoinNumber, VideoMuteOff);
 			trilist.SetSigTrueAction(joinMap.VideoMuteToggle.JoinNumber, VideoMuteToggle);
-			VideoMuteIsOnFeedback.LinkInputSig(trilist.BooleanInput[joinMap.VideoMuteOn.JoinNumber]);
-			VideoMuteIsOnFeedback.LinkComplementInputSig(trilist.BooleanInput[joinMap.VideoMuteOff.JoinNumber]);
+			VideoMuteIsOn.LinkInputSig(trilist.BooleanInput[joinMap.VideoMuteOn.JoinNumber]);
+			VideoMuteIsOn.LinkComplementInputSig(trilist.BooleanInput[joinMap.VideoMuteOff.JoinNumber]);
 
 			// bridge online change
 			trilist.OnlineStatusChange += (sender, args) =>
@@ -205,6 +205,7 @@ namespace ChristieProjectorPlugin
 				}
 
 				LampHoursFeedback.FireUpdate();
+				VideoMuteIsOn.FireUpdate();
 			};
 		}
 
@@ -233,6 +234,10 @@ namespace ChristieProjectorPlugin
 		private const string GatherDelimiter = @"\)";
 
 		private readonly GenericQueue _receiveQueue;
+		private long _lastSendTimeMs = 0;
+		private const int MinSendIntervalMs = 100; // Minimum milliseconds between sends
+		private readonly object _sendLock = new object();
+		private readonly Queue<string> _commandQueue = new Queue<string>();
 
 		private void OnCommunicationMonitorStatusChange(object sender, MonitorStatusChangeEventArgs args)
 		{
@@ -243,7 +248,7 @@ namespace ChristieProjectorPlugin
 		{
 			try
 			{
-				this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
+				//this.LogVerbose("OnCommunicationGatherLineReceived: args.Text-'{0}'", args.Text);
 				_receiveQueue.Enqueue(new ProcessStringMessage(args.Text, ProcessResponse));
 			}
 			catch (Exception ex)
@@ -261,7 +266,7 @@ namespace ChristieProjectorPlugin
 			if (string.IsNullOrEmpty(response)) return;
 			if (!response.Contains("!")) return;
 
-			this.LogVerbose("ProcessResponse: {response}", response);
+			//this.LogVerbose("ProcessResponse: {response}", response);
 
 			var responseValue = 0;
 			var responseType = "";
@@ -281,15 +286,60 @@ namespace ChristieProjectorPlugin
 				this.LogError(ex, "ProcessResponse exception");
 			}
 
-			this.LogVerbose("ProcessResponse: responseType-{responseType}, responseValue-{responseValue}", responseType, responseValue);
+			//this.LogVerbose("ProcessResponse: responseType-{responseType}, responseValue-{responseValue}", responseType, responseValue);
 
 			switch (responseType)
 			{
 				case "PWR":
+				{
+					// responseValue: 0=OFF, 1=ON, 10=cooling, 11=warming
+					
+					// Device is warming up
+					if (responseValue == 11)
 					{
-						PowerIsOn = responseValue == 1;
-						break;
+						IsWarmingUp = true;
+						this.LogVerbose("ProcessResponse: Device warming (PWR!11)");
 					}
+					// Device is cooling down
+					else if (responseValue == 10)
+					{
+						IsCoolingDown = true;
+						this.LogVerbose("ProcessResponse: Device cooling (PWR!10)");
+					}
+					// Warmup CONFIRMED (PWR!01)
+					else if (responseValue == 1)
+					{
+					if (IsWarmingUp)
+					{
+						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
+					}
+					IsWarmingUp = false;
+					if (_pendingPowerOff)
+					{
+						_pendingPowerOff = false;
+						this.LogWarning("ProcessResponse: Executing pending PowerOff");
+						PowerOff();
+					}
+				}
+				// Cooldown CONFIRMED (PWR!00)
+				else if (responseValue == 0)
+				{
+					if (IsCoolingDown)
+					{
+						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
+					}
+					IsCoolingDown = false;
+					if (_pendingPowerOn)
+					{
+						_pendingPowerOn = false;
+						this.LogWarning("ProcessResponse: Executing pending PowerOn");
+						PowerOn();
+					}
+				}
+					
+					PowerIsOn = (responseValue == 1);
+					break;
+				}
 				case "ILI":
 					{
 						// TODO [ ] Verify feedback with actual device, not in api doc
@@ -303,12 +353,13 @@ namespace ChristieProjectorPlugin
 					}
 				case "SHU":
 					{
-						VideoMuteIsOn = responseValue == 1;
+						_videoMuteState = responseValue == 1;
+						VideoMuteIsOn.FireUpdate();
 						break;
 					}
 				default:
 					{
-						this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
+						//this.LogVerbose("ProcessResponse: unknown response {responseType}", responseType);
 						break;
 					}
 			}
@@ -322,15 +373,8 @@ namespace ChristieProjectorPlugin
 		{
 			if (string.IsNullOrEmpty(cmd)) return;
 
-			if (!Communication.IsConnected)
-			{
-				this.LogWarning("SendText: device not connected");
-				return;
-			}
-
 			var text = string.Format("({0})", cmd);
-
-			Communication.SendText(text);
+			SendCommandQueued(text);
 		}
 
 		// formats outgoing message
@@ -339,14 +383,110 @@ namespace ChristieProjectorPlugin
 			var text = string.IsNullOrEmpty(value)
 				? "?"
 				: string.Format("({0}{1})", cmd, value);
-			Communication.SendText(text);
+			SendCommandQueued(text);
 		}
 
 		// formats outgoing message
 		private void SendText(string cmd, int value)
 		{
 			// tx format: "({cmd}{value})"
-			Communication.SendText(string.Format("({0}{1})", cmd, value));
+			SendCommandQueued(string.Format("({0}{1})", cmd, value));
+		}
+
+		/// <summary>
+		/// Queues a formatted command for sending with state checking and throttling.
+		/// Control commands trigger warming/cooling flags based on the command type.
+		/// Query commands (containing ?) are sent immediately without queuing.
+		/// </summary>
+		private void SendCommandQueued(string text)
+		{
+			if (string.IsNullOrEmpty(text)) return;
+
+			if (!Communication.IsConnected)
+			{
+				this.LogWarning("SendCommandQueued: device not connected");
+				return;
+			}
+
+			// Query commands (containing ?) bypass queue and send immediately
+			if (text.Contains("?"))
+			{
+				lock (_sendLock)
+				{
+					try
+					{
+						Communication.SendText(text);
+						this.LogVerbose("SendCommandQueued: Query sent immediately: {text}", text);
+					}
+					catch (Exception ex)
+					{
+						this.LogError(ex, "Exception sending query command");
+					}
+				}
+				return;
+			}
+
+			lock (_sendLock)
+			{
+				// Check if this is a power control command (not a query)
+				// PWR!1 = power on -> expect warming
+				// PWR!0 = power off -> expect cooling
+				if (text.Contains("(PWR!1)") && !IsWarmingUp)
+				{
+					IsWarmingUp = true;
+					this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
+				}
+				else if (text.Contains("(PWR!0)") && !IsCoolingDown)
+				{
+					IsCoolingDown = true;
+					this.LogVerbose("SendCommandQueued: Power OFF command queued, setting IsCoolingDown=true. Cooling time: {CooldownTimeMs}ms", CooldownTime);
+				}
+
+				// Queue the command
+				_commandQueue.Enqueue(text);
+				this.LogVerbose("SendCommandQueued: Control command queued: {text}. Queue size: {queueSize}", text, _commandQueue.Count);
+				
+				// Try to process queue
+				ProcessCommandQueue();
+			}
+		}
+
+		/// <summary>
+		/// Processes the command queue, sending commands only when device is ready.
+		/// Only control commands are in queue; queries are sent immediately bypassing queue.
+		/// Commands are held if device is warming or cooling.
+		/// </summary>
+		private void ProcessCommandQueue()
+		{
+			while (_commandQueue.Count > 0)
+			{
+				string text = _commandQueue.Peek();
+
+				try
+				{
+					// Calculate time to wait based on minimum send interval
+					long currentTimeMs = Convert.ToInt64(DateTime.Now.ToUniversalTime().Subtract(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds);
+					long timeSinceLastSendMs = currentTimeMs - _lastSendTimeMs;
+					
+					if (timeSinceLastSendMs < MinSendIntervalMs)
+					{
+						long delayMs = MinSendIntervalMs - timeSinceLastSendMs;
+						this.LogVerbose("ProcessCommandQueue: Throttling for {delayMs}ms", delayMs);
+						Thread.Sleep((int)delayMs);
+					}
+
+					// Send the command
+					Communication.SendText(text);
+					_lastSendTimeMs = Convert.ToInt64(DateTime.Now.ToUniversalTime().Subtract(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds);
+					_commandQueue.Dequeue(); // Remove from queue after successful send
+					this.LogVerbose("ProcessCommandQueue: Sent {text}. Remaining in queue: {queueSize}", text, _commandQueue.Count);
+				}
+				catch (Exception ex)
+				{
+					this.LogError(ex, "Exception in ProcessCommandQueue");
+					break; // Stop processing if there's an error
+				}
+			}
 		}
 
 		/// <summary>
@@ -444,7 +584,20 @@ namespace ChristieProjectorPlugin
 					{
 						_isWarmingUp = false;
 						IsWarmingUpFeedback.FireUpdate();
+						// Process any queued commands now that warmup is complete
+						lock (_sendLock)
+						{
+							ProcessCommandQueue();
+						}
 					}, WarmupTime);
+				}
+				else
+				{
+					// Warmup completed, process queued commands
+					lock (_sendLock)
+					{
+						ProcessCommandQueue();
+					}
 				}
 			}
 		}
@@ -466,7 +619,20 @@ namespace ChristieProjectorPlugin
 					{
 						_isCoolingDown = false;
 						IsCoolingDownFeedback.FireUpdate();
+						// Process any queued commands now that cooldown is complete
+						lock (_sendLock)
+						{
+							ProcessCommandQueue();
+						}
 					}, CooldownTime);
+				}
+				else
+				{
+					// Cooldown completed, process queued commands
+					lock (_sendLock)
+					{
+						ProcessCommandQueue();
+					}
 				}
 			}
 		}
@@ -491,13 +657,20 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public override void PowerOn()
 		{
-			if (IsWarmingUp || IsCoolingDown) return;
+			// Skip if already warming up
+			if (IsWarmingUp) return;
+
+			// Queue power on if cooling down
+			if (IsCoolingDown)
+			{
+				_pendingPowerOn = true;
+				this.LogWarning("PowerOn: Queued (cooling down)");
+				return;
+			}
 
 			if (PowerIsOn == false) IsWarmingUp = true;
 
 			SendText("PWR", 1);
-
-			Thread.Sleep(1500);
 
 			PowerGet();
 
@@ -508,14 +681,20 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public override void PowerOff()
 		{
-			if (IsWarmingUp || IsCoolingDown) return;
+			// Skip if already cooling down
+			if (IsCoolingDown) return;
+
+			// Queue power off if warming up
+			if (IsWarmingUp)
+			{
+				_pendingPowerOff = true;
+				this.LogWarning("PowerOff: Queued (warming up)");
+				return;
+			}
 
 			if (PowerIsOn == true) IsCoolingDown = true;
 
 			SendText("PWR", 0);
-
-
-			Thread.Sleep(50);
 
 			PowerGet();
 
@@ -912,33 +1091,22 @@ namespace ChristieProjectorPlugin
 
 		#endregion
 
+		#region Power State Management
+
+		private bool _pendingPowerOn;
+		private bool _pendingPowerOff;
+
+		#endregion
+
 		#region videoMute
 
-		private bool _videoMuteIsOn;
+		private bool _videoMuteState;
 
 
 		/// <summary>
-		/// Gets or sets the video mute state of the projector
+		/// Gets the feedback object for video mute state
 		/// </summary>
-		public bool VideoMuteIsOn
-		{
-			get { return _videoMuteIsOn; }
-			set
-			{
-				if (_videoMuteIsOn == value)
-				{
-					return;
-				}
-
-				_videoMuteIsOn = value;
-				VideoMuteIsOnFeedback.FireUpdate();
-			}
-		}
-
-		/// <summary>
-		/// Gets or sets the feedback object for video mute state
-		/// </summary>
-		public BoolFeedback VideoMuteIsOnFeedback;
+		public BoolFeedback VideoMuteIsOn { get; private set; }
 
 		/// <summary>
 		/// Polls the projector for current video mute status
@@ -975,7 +1143,7 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void VideoMuteToggle()
 		{
-			if (VideoMuteIsOn)
+			if (VideoMuteIsOn.BoolValue)
 				VideoMuteOff();
 			else
 				VideoMuteOn();
