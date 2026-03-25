@@ -45,7 +45,7 @@ namespace ChristieProjectorPlugin
                 case "christie4k35rgbprojector":
                     return new Christie4K35RgbController(dc.Key, dc.Name, config, comms);
                 default:
-                    return new Christie4K7HsController(dc.Key, dc.Name, config, comms); ;
+                    return new Christie4K7HsController(dc.Key, dc.Name, config, comms);
             }
         }
     }
