@@ -82,7 +82,7 @@ namespace ChristieProjectorPlugin
 		}
 
 
-		/// <summary> ///
+		/// <summary>
 		/// Initializes the device by establishing communication connection and starting the communication monitor
 		/// </summary>
 		public override void Initialize()
