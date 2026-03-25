@@ -492,7 +492,7 @@ When device reaches confirmed state:
 
 - **Outbound:** Commands in format `(CMD)` or `(CMD n)` (e.g., `(PWR1)`, `(SIN11)`)
 - **Inbound:** Responses in format `(CMD!nn)` (e.g., `(PWR!01)`, `(SIN!04)`)
-- **Delimiter:** Line feed (`\n`) terminates responses for parsing
+- **Delimiter:** Closing parenthesis `)` terminates responses for parsing
 - **Polling:** StatusGet() sends `(PWR?)`, `(SIN?)`, `(SHU?)` queries on configured interval
 
 **Response Value Meanings:**
