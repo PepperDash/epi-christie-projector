@@ -445,21 +445,15 @@ namespace ChristieProjectorPlugin
 				// Check if this is a power control command (not a query)
 				// PWR!1 = power on -> expect warming
 				// PWR!0 = power off -> expect cooling
-				if (text.Contains("(PWR!1)"))
+				if (text.Contains("(PWR!1)") && !IsWarmingUp)
 				{
-					if (!IsWarmingUp)
-					{
-						IsWarmingUp = true;
-						this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
-					}
+					IsWarmingUp = true;
+					this.LogVerbose("SendCommandQueued: Power ON command queued, setting IsWarmingUp=true. Warming time: {WarmupTimeMs}ms", WarmupTime);
 				}
-				else if (text.Contains("(PWR!0)"))
+				else if (text.Contains("(PWR!0)") && !IsCoolingDown)
 				{
-					if (!IsCoolingDown)
-					{
-						IsCoolingDown = true;
-						this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
-					}
+					IsCoolingDown = true;
+					this.LogWarning("SendCommandQueued: Power OFF command - setting IsCoolingDown=true. Cooling time: {CooldownTime}ms", CooldownTime);
 				}
 
 				// Queue the command
