@@ -653,14 +653,14 @@ namespace ChristieProjectorPlugin
 					return "HDMI 2";
 				case "hdmiIn3":
 					return "VOM HDMI 1";
-				case "displayPortIn1":
-					return "Display Port 1";
-				case "displayPortIn2":
-					return "Display Port 2";
 				case "displayPortIn3":
-					return "VOM Display Port 1";
+					return "VOM DisplayPort 1";
 				case "displayPortIn":
-					return "VOM Display Port 2";
+					return "VOM DisplayPort 2";
+				case "displayPortIn1":
+					return "DisplayPort 1";
+				case "displayPortIn2":
+					return "DisplayPort 2";
 				case "sdiIn":
 					return "SDI 1";
 				case "rgbIn":
@@ -671,10 +671,8 @@ namespace ChristieProjectorPlugin
 					return "SDI 4";
 				case "vgaIn1":
 					return "Digital Link 1";
-				case "vgaIn2":
+				case "vgaIn":
 					return "Digital Link 2";
-
-
 				default:
 					return string.Empty;
 			}
@@ -702,19 +700,19 @@ namespace ChristieProjectorPlugin
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.DisplayPortIn3, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.DisplayPort, new Action(InputVomDisplayPort1), this), 4);
+						eRoutingPortConnectionType.DisplayPort, new Action(InputVomDisplayPort1), this), 4);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.DisplayPortIn, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.DisplayPort, new Action(InputVomDisplayPort2), this), 5);
+						eRoutingPortConnectionType.DisplayPort, new Action(InputVomDisplayPort2), this), 5);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.DisplayPortIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort1), this), 6);
+						eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort1), this), 6);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.DisplayPortIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort2), this), 7);
+						eRoutingPortConnectionType.DisplayPort, new Action(InputDisplayPort2), this), 7);
 
 			AddRoutingInputPort(
 				new RoutingInputPort(RoutingPortNames.SdiIn, eRoutingSignalType.Audio | eRoutingSignalType.Video,
@@ -722,24 +720,23 @@ namespace ChristieProjectorPlugin
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.RgbIn, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.Sdi, new Action(InputSdi2), this), 9);
+						eRoutingPortConnectionType.Sdi, new Action(InputSdi2), this), 9);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.RgbIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.Sdi, new Action(InputSdi3), this), 10);
+						eRoutingPortConnectionType.Sdi, new Action(InputSdi3), this), 10);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.RgbIn2, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.Sdi, new Action(InputSdi4), this), 11);
+						eRoutingPortConnectionType.Sdi, new Action(InputSdi4), this), 11);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.VgaIn1, eRoutingSignalType.Audio | eRoutingSignalType.Video,
-							eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink1), this), 12);
+						eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink1), this), 12);
 
 			AddRoutingInputPort(
 					new RoutingInputPort(RoutingPortNames.VgaIn, eRoutingSignalType.Audio | eRoutingSignalType.Video,
 							eRoutingPortConnectionType.Streaming, new Action(InputDigitalLink2), this), 13);
-
 
 			// initialize feedbacks after adding input ports
 			_inputFeedback = new List<bool>();

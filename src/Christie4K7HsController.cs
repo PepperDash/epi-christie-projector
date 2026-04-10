@@ -820,10 +820,10 @@ namespace ChristieProjectorPlugin
 				case "dviIn1":
 					return "DVI 1";
 				case "displayPortIn1":
-					return "Display Port 1";
-				case "hdmiIn4":
+					return "DisplayPort 1";
+				case "slot1":
 					return "Slot 1";
-				case "hdmiIn5":
+				case "slot2":
 					return "Slot 2";
 				default:
 					return string.Empty;
@@ -1023,22 +1023,22 @@ namespace ChristieProjectorPlugin
 
 			switch (CurrentInputPort.Key)
 			{
-				case RoutingPortNames.HdmiIn1:
+				case "HDMI 1":
 					CurrentInputNumber = 1;
 					break;
-				case RoutingPortNames.HdmiIn2:
+				case "HDMI 2":
 					CurrentInputNumber = 2;
 					break;
-				case RoutingPortNames.DviIn1:
+				case "DVI 1":
 					CurrentInputNumber = 3;
 					break;
-				case RoutingPortNames.DisplayPortIn1:
+				case "Display Port 1":
 					CurrentInputNumber = 4;
 					break;
-				case "slot1":
+				case "Slot 1":
 					CurrentInputNumber = 5;
 					break;
-				case "slot2":
+				case "Slot 2":
 					CurrentInputNumber = 6;
 					break;
 			}
