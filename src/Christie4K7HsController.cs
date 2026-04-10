@@ -820,10 +820,10 @@ namespace ChristieProjectorPlugin
 				case "dviIn1":
 					return "DVI 1";
 				case "displayPortIn1":
-					return "Display Port 1";
-				case "hdmiIn4":
+					return "DisplayPort 1";
+				case "slot1":
 					return "Slot 1";
-				case "hdmiIn5":
+				case "slot2":
 					return "Slot 2";
 				default:
 					return string.Empty;
@@ -882,7 +882,7 @@ namespace ChristieProjectorPlugin
 
 			Inputs = new ChristieProjectorInputs()
 			{
-				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, p.Key, p.Selector as Action) as ISelectableItem)
+				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, GetInputNameForKey(p.Key), p.Selector as Action) as ISelectableItem)
 			};
 		}
 
