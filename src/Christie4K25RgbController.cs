@@ -958,7 +958,7 @@ namespace ChristieProjectorPlugin
 
 			Inputs = new ChristieProjectorInputs()
 			{
-				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, p.Key, p.Selector as Action) as ISelectableItem)
+				Items = InputPorts.ToDictionary(p => p.Key, p => new ChristieProjectorInput(p.Key, GetInputNameForKey(p.Key), p.Selector as Action) as ISelectableItem)
 			};
 		}
 
