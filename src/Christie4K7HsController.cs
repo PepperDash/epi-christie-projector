@@ -1023,22 +1023,22 @@ namespace ChristieProjectorPlugin
 
 			switch (CurrentInputPort.Key)
 			{
-				case "HDMI 1":
+				case RoutingPortNames.HdmiIn1:
 					CurrentInputNumber = 1;
 					break;
-				case "HDMI 2":
+				case RoutingPortNames.HdmiIn2:
 					CurrentInputNumber = 2;
 					break;
-				case "DVI 1":
+				case RoutingPortNames.DviIn1:
 					CurrentInputNumber = 3;
 					break;
-				case "Display Port 1":
+				case RoutingPortNames.DisplayPortIn1:
 					CurrentInputNumber = 4;
 					break;
-				case "Slot 1":
+				case "slot1":
 					CurrentInputNumber = 5;
 					break;
-				case "Slot 2":
+				case "slot2":
 					CurrentInputNumber = 6;
 					break;
 			}
