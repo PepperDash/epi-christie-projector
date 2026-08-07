@@ -403,11 +403,14 @@ namespace ChristieProjectorPlugin
 			if (!PowerIsOn) return;
 
 			CrestronEnvironment.Sleep(2000);
+			// re-check: power may have turned off during the sleep
+			if (!PowerIsOn) return;
 			InputGet();
 
 			if (!HasLamps) return;
 
 			CrestronEnvironment.Sleep(2000);
+			if (!PowerIsOn) return;
 			LampGet();
 		}
 

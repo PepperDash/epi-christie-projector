@@ -314,12 +314,7 @@ namespace ChristieProjectorPlugin
 						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
 					}
 					IsWarmingUp = false;
-					if (_pendingPowerOff)
-					{
-						_pendingPowerOff = false;
-						this.LogWarning("ProcessResponse: Executing pending PowerOff");
-						PowerOff();
-					}
+					ExecutePendingPowerOff();
 				}
 				// Cooldown CONFIRMED (PWR!00)
 				else if (responseValue == 0)
@@ -329,12 +324,7 @@ namespace ChristieProjectorPlugin
 						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
 					}
 					IsCoolingDown = false;
-					if (_pendingPowerOn)
-					{
-						_pendingPowerOn = false;
-						this.LogWarning("ProcessResponse: Executing pending PowerOn");
-						PowerOn();
-					}
+					ExecutePendingPowerOn();
 				}
 					
 					PowerIsOn = (responseValue == 1);
@@ -531,11 +521,14 @@ namespace ChristieProjectorPlugin
 			if (!PowerIsOn) return;
 
 			CrestronEnvironment.Sleep(2000);
+			// re-check: power may have turned off during the sleep
+			if (!PowerIsOn) return;
 			InputGet();
 
 			if (!HasLamps) return;
 
 			CrestronEnvironment.Sleep(2000);
+			if (!PowerIsOn) return;
 			LampGet();
 		}
 
@@ -580,6 +573,12 @@ namespace ChristieProjectorPlugin
 
 				if (_isWarmingUp)
 				{
+					if (WarmupTimer != null)
+					{
+						WarmupTimer.Stop();
+						WarmupTimer.Dispose();
+					}
+
 					WarmupTimer = new CTimer(t =>
 					{
 						_isWarmingUp = false;
@@ -589,10 +588,19 @@ namespace ChristieProjectorPlugin
 						{
 							ProcessCommandQueue();
 						}
+						// Warmup ended via timer fallback; run any power-off queued during warmup
+						ExecutePendingPowerOff();
 					}, WarmupTime);
 				}
 				else
 				{
+					if (WarmupTimer != null)
+					{
+						WarmupTimer.Stop();
+						WarmupTimer.Dispose();
+						WarmupTimer = null;
+					}
+
 					// Warmup completed, process queued commands
 					lock (_sendLock)
 					{
@@ -615,6 +623,12 @@ namespace ChristieProjectorPlugin
 
 				if (_isCoolingDown)
 				{
+					if (CooldownTimer != null)
+					{
+						CooldownTimer.Stop();
+						CooldownTimer.Dispose();
+					}
+
 					CooldownTimer = new CTimer(t =>
 					{
 						_isCoolingDown = false;
@@ -624,10 +638,19 @@ namespace ChristieProjectorPlugin
 						{
 							ProcessCommandQueue();
 						}
+						// Cooldown ended via timer fallback; run any power-on queued during cooldown
+						ExecutePendingPowerOn();
 					}, CooldownTime);
 				}
 				else
 				{
+					if (CooldownTimer != null)
+					{
+						CooldownTimer.Stop();
+						CooldownTimer.Dispose();
+						CooldownTimer = null;
+					}
+
 					// Cooldown completed, process queued commands
 					lock (_sendLock)
 					{
@@ -723,6 +746,32 @@ namespace ChristieProjectorPlugin
 			{
 				PowerOn();
 			}
+		}
+
+		// Atomically consumes a power-off queued while warming and runs it.
+		private void ExecutePendingPowerOff()
+		{
+			lock (_sendLock)
+			{
+				if (!_pendingPowerOff) return;
+				_pendingPowerOff = false;
+			}
+
+			this.LogWarning("Executing pending PowerOff");
+			PowerOff();
+		}
+
+		// Atomically consumes a power-on queued while cooling and runs it.
+		private void ExecutePendingPowerOn()
+		{
+			lock (_sendLock)
+			{
+				if (!_pendingPowerOn) return;
+				_pendingPowerOn = false;
+			}
+
+			this.LogWarning("Executing pending PowerOn");
+			PowerOn();
 		}
 
 		#endregion
