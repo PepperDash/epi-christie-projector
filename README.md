@@ -7,7 +7,7 @@ Comprehensive power management, input control, and video mute functionality for 
 <!-- START Minimum Essentials Framework Versions -->
 ### Minimum Essentials Framework Versions
 
-- 2.5.1 (PepperDash Essentials)
+- 2.5.1
 <!-- END Minimum Essentials Framework Versions -->
 
 ---
@@ -37,149 +37,31 @@ User presses PowerOn → Device responds PWR!11 (warming) → User immediately p
 ---
 
 <!-- START Supported Types -->
-### Supported Types
-
-**Device Types:**
-- `christie4k7hsprojector` - Christie 4K7-HS Projector
-- `christie4k25rgbprojector` - Christie 4K25-RGB Projector
-
-Both devices support identical communication methods (RS-232 serial and TCP/Network) and feature sets.
 
 <!-- END Supported Types -->
 
 ---
 
 <!-- START Config Example -->
-### Config Examples
-
-#### TCP Configuration (Network)
+### Config Example
 
 ```json
 {
-  "key": "roomA-projector",
-  "uid": 1,
-  "name": "Room A Christie 4K7-HS",
-  "type": "christie4k7hsprojector",
-  "group": "displays",
-  "properties": {
-    "control": {
-      "method": "tcpIp",
-      "tcpSshProperties": {
-        "address": "192.168.1.100",
-        "port": 3002,
-        "username": "",
-        "password": "",
-        "autoReconnect": true,
-        "autoReconnectIntervalMs": 5000
-      }
-    },
-    "pollIntervalMs": 10000,
-    "warmingTimeMs": 30000,
-    "coolingTimeMs": 30000,
-    "hasLamps": true,
-    "hasScreen": false,
-    "hasLift": false
-  }
+    "key": "GeneratedKey",
+    "uid": 1,
+    "name": "GeneratedName",
+    "type": "ChristieProjectorProperties",
+    "group": "Group",
+    "properties": {
+        "pollIntervalMs": 0,
+        "coolingTimeMs": "SampleValue",
+        "warmingTimeMs": "SampleValue",
+        "hasLamps": true,
+        "hasScreen": true,
+        "hasLift": true
+    }
 }
 ```
-**Note:** Standard TCP/Network configuration for Christie projectors. Device IP address must be static. Port 3002 is the standard Christie serial-over-IP port. Poll interval minimum enforced at 10 seconds.
-
-#### RS-232 Serial Configuration
-
-```json
-{
-  "key": "conferenceRoom-projector",
-  "uid": 2,
-  "name": "Conference Christie 4K25-RGB",
-  "type": "christie4k25rgbprojector",
-  "group": "displays",
-  "properties": {
-    "control": {
-      "method": "com",
-      "controlPortNumber": 1,
-      "comParams": {
-        "baudRate": 9600,
-        "dataBits": 8,
-        "stopBits": 1,
-        "parity": "None",
-        "softwareHandshake": "None",
-        "hardwareHandshake": "None",
-        "protocol": "RS232"
-      }
-    },
-    "pollIntervalMs": 10000,
-    "warmingTimeMs": 30000,
-    "coolingTimeMs": 30000,
-    "hasLamps": true,
-    "hasScreen": false,
-    "hasLift": false
-  }
-}
-```
-**Note:** RS-232 serial configuration. Device connects to control processor serial port (typically 1-3 for CP4). Communication at 9600 baud, 8 data bits, no parity, 1 stop bit (device firmware fixed).
-
-#### Multi-Device Configuration (Mixed)
-
-```json
-[
-  {
-    "key": "main-display",
-    "uid": 10,
-    "name": "Main Room Projector",
-    "type": "christie4k7hsprojector",
-    "group": "displays",
-    "properties": {
-      "control": {
-        "method": "tcpIp",
-        "tcpSshProperties": {
-          "address": "192.168.1.100",
-          "port": 3002,
-          "username": "",
-          "password": "",
-          "autoReconnect": true,
-          "autoReconnectIntervalMs": 5000
-        }
-      },
-      "pollIntervalMs": 10000,
-      "warmingTimeMs": 30000,
-      "coolingTimeMs": 30000,
-      "hasLamps": true,
-      "hasScreen": false,
-      "hasLift": false
-    }
-  },
-  {
-    "key": "backup-display",
-    "uid": 11,
-    "name": "Backup Room Projector",
-    "type": "christie4k25rgbprojector",
-    "group": "displays",
-    "properties": {
-      "control": {
-        "method": "com",
-        "controlPortNumber": 2,
-        "comParams": {
-          "baudRate": 9600,
-          "dataBits": 8,
-          "stopBits": 1,
-          "parity": "None",
-          "softwareHandshake": "None",
-          "hardwareHandshake": "None",
-          "protocol": "RS232"
-        }
-      },
-      "pollIntervalMs": 10000,
-      "warmingTimeMs": 30000,
-      "coolingTimeMs": 30000,
-      "hasLamps": true,
-      "hasScreen": false,
-      "hasLift": false
-    }
-  }
-]
-```
-**Note:** Multi-device configuration with mixed communication methods (TCP for main, serial for backup). UIDs must be unique across all devices.
-
 <!-- END Config Example -->
 
 ---
@@ -296,51 +178,6 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
 ---
 
 <!-- START Join Maps -->
-### Join Maps
-
-#### Digitals
-
-| Join | Direction | Description |
-|------|-----------|-------------|
-| 1 | R | Is Online (Communication Status) |
-| 2 | R/W | Power On / Power On Feedback |
-| 3 | R/W | Power Off / Power Off Feedback |
-| 4 | R | Power Toggle |
-| 5 | R | Is Warming Up Feedback |
-| 6 | R | Is Cooling Down Feedback |
-| 11 | R/W | Input HDMI 1 Select / Feedback |
-| 12 | R/W | Input HDMI 2 Select / Feedback |
-| 13 | R/W | Input DigitalLink Select / Feedback |
-| 14 | R/W | Input DVI-D Select / Feedback |
-| 15 | R/W | Input DisplayPort Select / Feedback |
-| 16 | R/W | Input SDI 1 Select / Feedback |
-| 17 | R/W | Input SDI 2 Select / Feedback |
-| 18 | R/W | Input SDI 3 Select / Feedback |
-| 19 | R/W | Input SDI 4 Select / Feedback |
-| 20 | R/W | Input USB Select / Feedback |
-| 21 | R/W | Input Network Select / Feedback |
-| 31 | R | Has Lamps (Device Capability Feedback) |
-| 32 | R | Has Screen (Device Capability Feedback) |
-| 33 | R | Has Lift (Device Capability Feedback) |
-| 51 | R/W | Video Mute On / Video Mute On Feedback |
-| 52 | R/W | Video Mute Off / Video Mute Off Feedback |
-| 53 | R/W | Video Mute Toggle / Video Mute State |
-
-#### Analogs
-
-| Join | Direction | Description |
-|------|-----------|-------------|
-| 1 | R | Communication Status (0=Online, 1=Warning, 2=Error) |
-| 2 | R | Current Input Selection (1-11 for input number) |
-| 3 | R | Lamp Hours (Read-only feedback) |
-| 4 | W | Input Select Command (1-11 to switch input) |
-
-#### Serials
-
-| Join | Direction | Description |
-|------|-----------|-------------|
-| 1 | R | Device Name |
-| 2 | R | Current Input Name (String feedback) |
 
 <!-- END Join Maps -->
 
@@ -403,11 +240,12 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
 <!-- START Interfaces Implemented -->
 ### Interfaces Implemented
 
-- `ITwoWayDisplayWithAudio` - Two-way display control interface (base for all power/input/mute methods)
-- `IOnline` - Online status feedback interface
-- `ICommunicationMonitor` - Communication monitoring and error detection
-- `IBridgeAdvanced` - Advanced bridge support for EISC API integration
-
+- ISelectableItems<string>
+- ICommunicationMonitor
+- IBridgeAdvanced
+- IHasInputs<string>
+- IRoutingSinkWithSwitchingWithInputPort
+- IBasicVideoMuteWithFeedback
 <!-- END Interfaces Implemented -->
 
 ---
@@ -415,22 +253,8 @@ Both devices support identical communication methods (RS-232 serial and TCP/Netw
 <!-- START Base Classes -->
 ### Base Classes
 
-**Device Base Classes:**
-- `TwoWayDisplayBase` - Base class for two-way display devices with power, input, and mute control
-
-**Communication & Monitoring:**
-- `CommunicationGather` - Serial message gathering and parsing (accumulates data until delimiter found)
-- `GenericCommunicationMonitor` - Communication health monitoring with online/offline/error state tracking
-- `IBasicCommunication` - Core communication interface abstraction
-
-**Bridge & Join Mapping:**
-- `DisplayControllerJoinMap` - Base join map for display control devices
-- `ChristieProjectorBridgeJoinMap` - Christie-specific join map extending DisplayControllerJoinMap
-
-**Device Management:**
-- `DeviceManager` - Essentials device registry and lifecycle management
-- `EssentialsPluginDeviceFactory<T>` - Base factory for creating plugin devices
-
+- TwoWayDisplayBase
+- DisplayControllerJoinMap
 <!-- END Base Classes -->
 
 ---
@@ -656,3 +480,94 @@ Christie4K7HsController / Christie4K25RgbController
 **Framework Version:** PepperDash Essentials 2.5.1+  
 **Plugin Version:** 1.0.0  
 **Methodology:** SOURCE-FIRST EXTRACTION per COPILOT_README_PROMPTS.md
+<!-- START Public Methods -->
+### Public Methods
+
+- public void Select()
+- public void LinkToApi(BasicTriList trilist, uint joinStart, string joinMapKey, EiscApiAdvanced bridge)
+- public void SendText(string cmd)
+- public void StatusGet()
+- public void PowerGet()
+- public void InputHdmi1()
+- public void InputHdmi2()
+- public void InputVomHdmi1()
+- public void InputDisplayPort1()
+- public void InputDisplayPort2()
+- public void InputVomDisplayPort1()
+- public void InputVomDisplayPort2()
+- public void InputSdi1()
+- public void InputSdi2()
+- public void InputSdi3()
+- public void InputSdi4()
+- public void InputDigitalLink1()
+- public void InputDigitalLink2()
+- public void InputToggle()
+- public void InputGet()
+- public void UpdateInputFb(int input)
+- public void LampGet()
+- public void VideoMuteGet()
+- public void VideoMuteOn()
+- public void VideoMuteOff()
+- public void VideoMuteToggle()
+- public void LinkToApi(BasicTriList trilist, uint joinStart, string joinMapKey, EiscApiAdvanced bridge)
+- public void SendText(string cmd)
+- public void StatusGet()
+- public void PowerGet()
+- public void InputHdmi1()
+- public void InputHdmi2()
+- public void InputSlot1()
+- public void InputSlot2()
+- public void InputDvi1()
+- public void InputDisplayPort1()
+- public void InputToggle()
+- public void InputGet()
+- public void UpdateInputFb(int input)
+- public void LampGet()
+- public void VideoMuteGet()
+- public void VideoMuteOn()
+- public void VideoMuteOff()
+- public void VideoMuteToggle()
+- public void LinkToApi(BasicTriList trilist, uint joinStart, string joinMapKey, EiscApiAdvanced bridge)
+- public void SendText(string cmd)
+- public void StatusGet()
+- public void PowerGet()
+- public void InputHdmi1()
+- public void InputHdmi2()
+- public void InputHdbaseT()
+- public void InputDisplayPort1()
+- public void InputDisplayPort2()
+- public void InputSdi1()
+- public void InputSdi2()
+- public void InputSdi3()
+- public void InputSdi4()
+- public void InputDigitalLink1()
+- public void InputDigitalLink2()
+- public void InputToggle()
+- public void InputGet()
+- public void UpdateInputFb(int input)
+- public void LampGet()
+- public void VideoMuteGet()
+- public void VideoMuteOn()
+- public void VideoMuteOff()
+- public void VideoMuteToggle()
+<!-- END Public Methods -->
+<!-- START Bool Feedbacks -->
+### Bool Feedbacks
+
+- VideoMuteIsOnFeedback
+- VideoMuteIsOn
+- VideoMuteIsOn
+<!-- END Bool Feedbacks -->
+<!-- START Int Feedbacks -->
+### Int Feedbacks
+
+- CurrentInputNumberFeedback
+- LampHoursFeedback
+- CurrentInputNumberFeedback
+- LampHoursFeedback
+- CurrentInputNumberFeedback
+- LampHoursFeedback
+<!-- END Int Feedbacks -->
+<!-- START String Feedbacks -->
+
+<!-- END String Feedbacks -->
