@@ -919,6 +919,9 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void InputGet()
 		{
+			// Projector rejects input queries unless powered on (avoids SIN? ERR00119)
+			if (!PowerIsOn) return;
+
 			SendText("SIN", "?");
 
 		}

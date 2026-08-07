@@ -75,9 +75,6 @@ namespace ChristieProjectorPlugin
 		WarmupTime = props.WarmingTimeMs > 30000 ? props.WarmingTimeMs : 30000;
 		CooldownTime = props.CoolingTimeMs > 30000 ? props.CoolingTimeMs : 30000;
 
-		_pendingPowerOn = false;
-		_pendingPowerOff = false;
-
 		HasLamps = props.HasLamps;
 			HasScreen = props.HasScreen;
 			HasLift = props.HasLift;
@@ -333,7 +330,6 @@ namespace ChristieProjectorPlugin
 						this.LogWarning("ProcessResponse: Warmup confirmed (PWR!01). Checking pending commands.");
 					}
 					IsWarmingUp = false;
-					ExecutePendingPowerOff();
 				}
 				// Cooldown CONFIRMED (PWR!00)
 				else if (responseValue == 0)
@@ -343,10 +339,16 @@ namespace ChristieProjectorPlugin
 						this.LogWarning("ProcessResponse: Cooldown confirmed (PWR!00). Checking pending commands.");
 					}
 					IsCoolingDown = false;
-					ExecutePendingPowerOn();
 				}
 					
 					PowerIsOn = (responseValue == 1);
+
+					// Device reached a terminal state; apply the latest requested power state
+					if (responseValue == 0 || responseValue == 1)
+					{
+						ReconcileDesiredPower();
+					}
+
 					break;
 				}
 				case "SIN":
@@ -593,13 +595,11 @@ namespace ChristieProjectorPlugin
 					{
 						_isWarmingUp = false;
 						IsWarmingUpFeedback.FireUpdate();
-						// Process any queued commands now that warmup is complete
+						// Timer only clears the flag; a queued power-off runs on the confirmed PWR!01 response
 						lock (_sendLock)
 						{
 							ProcessCommandQueue();
 						}
-						// Warmup ended via timer fallback; run any power-off queued during warmup
-						ExecutePendingPowerOff();
 					}, WarmupTime);
 				}
 				else
@@ -644,13 +644,11 @@ namespace ChristieProjectorPlugin
 					{
 						_isCoolingDown = false;
 						IsCoolingDownFeedback.FireUpdate();
-						// Process any queued commands now that cooldown is complete
+						// Timer only clears the flag; a queued power-on runs on the confirmed PWR!00 response
 						lock (_sendLock)
 						{
 							ProcessCommandQueue();
 						}
-						// Cooldown ended via timer fallback; run any power-on queued during cooldown
-						ExecutePendingPowerOn();
 					}, CooldownTime);
 				}
 				else
@@ -693,18 +691,19 @@ namespace ChristieProjectorPlugin
 		{
 			this.LogWarning("PowerOn called: IsWarmingUp={IsWarmingUp}, IsCoolingDown={IsCoolingDown}, PowerIsOn={PowerIsOn}", IsWarmingUp, IsCoolingDown, PowerIsOn);
 			
-			// Don't send duplicate power on if already warming
-			if (IsWarmingUp) return;
+			// Record intent so the latest press always wins, even during a transition
+			_desiredPowerOn = true;
 
-			// Queue pending power on if cooling down, execute normally if not cooling
-			if (IsCoolingDown)
+			// Can't change power mid-transition; reconcile when device reports a terminal state
+			if (IsWarmingUp || IsCoolingDown)
 			{
-				_pendingPowerOn = true;
-				this.LogWarning("PowerOn queued (cooling down)");
+				this.LogWarning("PowerOn: deferred until device is ready (desired=On)");
 				return;
 			}
 
-		if (!PowerIsOn) IsWarmingUp = true;
+			if (PowerIsOn) return;
+
+			IsWarmingUp = true;
 
 		SendText("PWR", 1);
 
@@ -718,18 +717,19 @@ namespace ChristieProjectorPlugin
 		{
 			this.LogWarning("PowerOff called: PowerIsOn={PowerIsOn}, IsWarmingUp={IsWarmingUp}, IsCoolingDown={IsCoolingDown}", PowerIsOn, IsWarmingUp, IsCoolingDown);
 
-			// Don't send duplicate power off if already cooling
-			if (IsCoolingDown) return;
+			// Record intent so the latest press always wins, even during a transition
+			_desiredPowerOn = false;
 
-			// Queue pending power off if warming up, execute normally if not warming
-			if (IsWarmingUp)
+			// Can't change power mid-transition; reconcile when device reports a terminal state
+			if (IsWarmingUp || IsCoolingDown)
 			{
-				_pendingPowerOff = true;
-				this.LogWarning("PowerOff queued (warming up)");
+				this.LogWarning("PowerOff: deferred until device is ready (desired=Off)");
 				return;
 			}
 
-		if (PowerIsOn) IsCoolingDown = true;
+			if (!PowerIsOn) return;
+
+			IsCoolingDown = true;
 
 		SendText("PWR", 0);
 
@@ -762,30 +762,23 @@ namespace ChristieProjectorPlugin
 			}
 		}
 
-		// Atomically consumes a power-off queued while warming and runs it.
-		private void ExecutePendingPowerOff()
+		// Drives the device toward the last requested power state once it is idle (not warming/cooling).
+		private void ReconcileDesiredPower()
 		{
-			lock (_sendLock)
+			var desired = _desiredPowerOn;
+			if (!desired.HasValue) return;
+			if (IsWarmingUp || IsCoolingDown) return;
+
+			if (desired.Value && !PowerIsOn)
 			{
-				if (!_pendingPowerOff) return;
-				_pendingPowerOff = false;
+				this.LogWarning("ReconcileDesiredPower: desired On, device Off -> PowerOn");
+				PowerOn();
 			}
-
-			this.LogWarning("Executing pending PowerOff");
-			PowerOff();
-		}
-
-		// Atomically consumes a power-on queued while cooling and runs it.
-		private void ExecutePendingPowerOn()
-		{
-			lock (_sendLock)
+			else if (!desired.Value && PowerIsOn)
 			{
-				if (!_pendingPowerOn) return;
-				_pendingPowerOn = false;
+				this.LogWarning("ReconcileDesiredPower: desired Off, device On -> PowerOff");
+				PowerOff();
 			}
-
-			this.LogWarning("Executing pending PowerOn");
-			PowerOn();
 		}
 
 		#endregion
@@ -1099,6 +1092,9 @@ namespace ChristieProjectorPlugin
 		/// </summary>
 		public void InputGet()
 		{
+			// Projector rejects input queries unless powered on (avoids SIN? ERR00119)
+			if (!PowerIsOn) return;
+
 			SendText("SIN", "?");
 
 		}
@@ -1225,8 +1221,8 @@ namespace ChristieProjectorPlugin
 
 		#region Power State Management
 
-		private bool _pendingPowerOn;
-		private bool _pendingPowerOff;
+		// Last power state requested by the user; null until first request. Reconciled on terminal PWR responses.
+		private bool? _desiredPowerOn;
 
 		#endregion
 
